@@ -1,0 +1,11 @@
+#Visual Studio stuff
+.vs
+.vs/
+*.sln
+*.skb
+Config.AE.h
+Backup.bat
+
+# C extensions
+*.so
+
