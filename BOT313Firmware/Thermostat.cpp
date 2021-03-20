@@ -1,16 +1,18 @@
 #include <Arduino.h>
+#include <errno.h>
 #include "Config.h"
 #include "Thermostat.h"
 #include "Comms.h"
 
 static char* TOPIC_Locked PROGMEM = "Locked";
-static char* TOPIC_On PROGMEM = "On";
-static char* TOPIC_Active PROGMEM = "Active";
-static char* TOPIC_Manual PROGMEM = "Manual";
+static char* TOPIC_On PROGMEM = "Power";
+static char* TOPIC_Heating PROGMEM = "Heating";
+static char* TOPIC_TargetSetManually PROGMEM = "TargetSetManually";
 static char* TOPIC_RoomTemp PROGMEM = "RoomTemp";
 static char* TOPIC_FloorTemp PROGMEM = "FloorTemp";
 static char* TOPIC_FloorTempMax PROGMEM = "FloorTemp";
 static char* TOPIC_TargetTemp PROGMEM = "TargetTemp";
+
 static char* TOPIC_TargetTempMax PROGMEM = "TargetTempMax";
 static char* TOPIC_TargetTempMin PROGMEM = "TargetTempMin";
 
@@ -21,9 +23,16 @@ static char* TOPIC_Hysteresis PROGMEM = "Hysteresis";
 static char* TOPIC_AdjTemp PROGMEM = "AdjTemp";
 static char* TOPIC_AntiFroze PROGMEM = "AntiFroze";
 static char* TOPIC_PowerOnMemory PROGMEM = "PowerOnMemory";
-static char* TOPIC_Hours PROGMEM = "Hours";
-static char* TOPIC_Minutes PROGMEM = "Minutes";
 static char* TOPIC_DayOfWeek PROGMEM = "DayOfWeek";
+static char* TOPIC_Time PROGMEM = "Time";
+
+static char* TOPIC_SetTargetTemp PROGMEM = "SetTargetTemp";
+static char* TOPIC_SetOn PROGMEM = "SetPower";
+static char* TOPIC_SetLocked PROGMEM = "SetLocked";
+static char* TOPIC_SetAutoMode PROGMEM = "SetAutoMode";
+static char* TOPIC_SetLoopMode PROGMEM = "SetLoopMode";
+
+
 
 enum ThermPacketType {
   Ignore,
@@ -50,6 +59,7 @@ uint16 thermCRC = 0;
 	#define therm Serial
 #endif
 
+#pragma region CRC
 void thermCRCStart() {
   thermCRC = 0xFFFF;
 }
@@ -64,6 +74,7 @@ void thermCRCNext( uint8 nextByte) {
     }
   }
 }
+#pragma endregion
 
 #pragma region Message Sending
 void thermSendMessage( ThermPacketType packetType, const char* data) {
@@ -106,34 +117,28 @@ void thermSendMessage( const char* data ) {
 
 #pragma endregion
 
-#pragma region Curtains commands
-bool thermIsAlive() {
-  return true;
-  //return ( (unsigned long)(millis() - thermLastAlive) < (unsigned long)90000 );
-}
-
-#pragma endregion
+#pragma region ProcessMessage
 bool thermProcessMessage() {
   if( thermLen < 3 ) {
     thermLen = 0;
     return false;
   }
 
-#ifdef THERM_DEBUG
-  if( thermLen==0 ) return false;
-  char s[255];
-  char hex[4];
-  strcpy( s, "< ");
+  #ifdef THERM_DEBUG
+    if( thermLen==0 ) return false;
+    char s[255];
+    char hex[4];
+    strcpy( s, "< ");
 
-  for(int i=0; i<thermLen; i++ ) {
-    sprintf( hex, "%02x ", thermData[i]);
-    if( i == thermLen-2 ) strcat(s, ": ");
-    strcat( s, hex);
-  }
+    for(int i=0; i<thermLen; i++ ) {
+      sprintf( hex, "%02x ", thermData[i]);
+      if( i == thermLen-2 ) strcat(s, ": ");
+      strcat( s, hex);
+    }
 
-  aePrintln(s);
-  mqttPublish("Log",s,false);
-#endif
+    aePrintln(s);
+    mqttPublish("Log",s,false);
+  #endif
   if( ((unsigned long)(millis() - thermPacketRequested) > (unsigned long)2000) || (thermPacketType == ThermPacketType::Ignore) ) {
     thermPacketType = ThermPacketType::Ignore;
     thermPacketRequested = 0;
@@ -158,10 +163,10 @@ bool thermProcessMessage() {
           && (thermData[22]>0) && (thermData[22]<8) // Week day is in range
           && (thermData[19]<24) && (thermData[20]<60) // Hours and minutes are in range
         ) {
-        thermState.isLocked = thermData[3] & 1;
-        thermState.isOn = thermData[4] & 1;
-        thermState.isActive =  (thermData[4] >> 4) & 1;
-        thermState.isManual =  (thermData[4] >> 6) & 1;
+        thermState.locked = thermData[3] & 1;
+        thermState.on = thermData[4] & 1;
+        thermState.heating =  (thermData[4] >> 4) & 1;
+        thermState.targetSetManually =  (thermData[4] >> 6) & 1;
 
         thermState.roomTemp =  (thermData[5] & 255) / 2.0;
 
@@ -215,112 +220,94 @@ bool thermProcessMessage() {
   thermLen = 0;
   return false;
 }
+#pragma endregion
 
+#pragma region MQTT subscribtion handling
 void thermConnect() {
   memset( &_thermState, 0xFF, sizeof(_thermState) );
-  mqttSubscribeTopic( TOPIC_Locked );
-  mqttSubscribeTopic( TOPIC_On );
-  mqttSubscribeTopic( TOPIC_Active );
-  mqttSubscribeTopic( TOPIC_Manual );
-  mqttSubscribeTopic( TOPIC_TargetTemp );
-  mqttSubscribeTopic( TOPIC_AutoMode );
-  mqttSubscribeTopic( TOPIC_Sensor );
-  mqttSubscribeTopic( TOPIC_Hours );
-  mqttSubscribeTopic( TOPIC_Minutes );
-  mqttSubscribeTopic( TOPIC_DayOfWeek );
+  mqttSubscribeTopic( TOPIC_SetTargetTemp );
+  mqttSubscribeTopic( TOPIC_SetOn );
+  mqttSubscribeTopic( TOPIC_SetLocked );
+  mqttSubscribeTopic( TOPIC_SetAutoMode );
+  mqttSubscribeTopic( TOPIC_SetLoopMode );
+
 }
 
 bool thermCallback(char* topic, byte* payload, unsigned int length) {
   char s[64];
-  if( mqttIsTopic( topic, TOPIC_Locked ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_On ) ) {
-    if( (payload != NULL) && (length == 1) ) {
-      bool onOff = (*payload == '1') || (*payload == 1);
-      sprintf(s, "0106000000 %2x", onOff ? 0 : 1 );
-      thermSendMessage( ThermPacketType::Ignore, s );
+  if( mqttIsTopic( topic, TOPIC_SetTargetTemp ) ) {
+    if( (payload != NULL) && (length > 0) && (length<31) ) {
+      char s[31];
+      memset( s, 0, sizeof(s) );
+      strncpy( s, ((char*)payload), length );
+      errno = 0;
+      float temp = strtof(s,NULL);
+      if ( (errno == 0) && (temp>=thermState.targetTempMin) && (temp<=thermState.targetTempMax) ) {
+        sprintf(s, "01060002%02x", 0, (int)(temp*2) );
+        thermSendMessage( ThermPacketType::Ignore, s );
+        thermState.targetTemp = temp;
+      }
+      mqttPublish(TOPIC_SetTargetTemp,(char*)NULL, false);
     }
     return true;
-  } else if( mqttIsTopic( topic, TOPIC_Active ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_Manual ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_TargetTemp ) ) {
-
-
-/*
-void thermGetSchedule(){
-  thermSendMessage( "010300000016" );
-}
-void thermGetTemp(){
-  thermSendMessage( "010300000008" );
-}
-void thermSetMode(){
-  thermSendMessage( "" );
-}
-void thermSetTemp(){
-  thermSendMessage( "" );
-}
-
-  public function set_power($remote_lock,$power){
-    $payload = self::prepare_request(array(0x01,0x06,0x00,0x00,$remote_lock,$power));
-    $response=$this->send_packet(0x6a, $payload);
-  }
-
-  public function set_mode($mode_byte,$sensor){
-    $payload = self::prepare_request(array(0x01,0x06,0x00,0x02,$mode_byte,$sensor));
-    $response=$this->send_packet(0x6a, $payload);
-  }
-
-  public function set_temp($param){
-    $payload = self::prepare_request(array(0x01,0x06,0x00,0x01,0x00,(int)($param * 2)));
-    $response=$this->send_packet(0x6a, $payload);
-  }
-
-  public function set_time($hour,$minute,$second,$day){
-    $payload = self::prepare_request(array(0x01,0x10,0x00,0x08,0x00,0x02,0x04,$hour,$minute,$second,$day));
-    $response=$this->send_packet(0x6a, $payload);
-  }
-
-  public function set_advanced($loop_mode,$sensor,$osv,$dif,$svh,$svl,$adj1,$adj2,$fre,$poweron){
-    $payload = self::prepare_request(array(0x01,0x10,0x00,0x02,0x00,0x05,0x0a,$loop_mode,$sensor,$osv,$dif,$svh,$svl,$adj1,$adj2,$fre,$poweron));
-    $response=$this->send_packet(0x6a, $payload);
-  }
-
-  public function set_schedule($param){
-    $pararr = json_decode($param,true);
-    $input_payload = array(0x01,0x10,0x00,0x0a,0x00,0x0c,0x18);
-    for ($i = 0; $i < 6; $i++){
-      $input_payload = array_push($input_payload,$pararr[0][$i]['start_hour'],$pararr[0][$i]['start_minute']);
+  } else if( mqttIsTopic( topic, TOPIC_SetOn ) ) {
+    if( (payload != NULL) && (length==1) ) {
+      char v = ( (char)*payload =='1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
+      if( v<99) {
+        char s[31];
+        sprintf(s, "01060000%02x%02x", thermState.locked, v );
+        thermSendMessage( ThermPacketType::Ignore, s );
+        thermState.on = (bool)v;
+        mqttPublish(TOPIC_SetOn,(char*)NULL, false);
+      }
     }
-    for ($i = 0; $i < 2; $i++){
-      $input_payload = array_push($input_payload,$pararr[1][$i]['start_hour'],$pararr[1][$i]['start_minute']);
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetLocked ) ) {
+    if( (payload != NULL) && (length==1) ) {
+      char v = ( (char)*payload =='1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
+      if( v<99) {
+        char s[31];
+        sprintf(s, "01060000%02x%02x", v, thermState.on );
+        thermSendMessage( ThermPacketType::Ignore, s );
+        thermState.locked = (bool)v;
+        mqttPublish(TOPIC_SetLocked,(char*)NULL, false);
+      }
     }
-    for ($i = 0; $i < 6; $i++){
-      $input_payload = array_push($input_payload,((int)$pararr[0][$i]['temp'] * 2));
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetAutoMode ) ) {
+    if( (payload != NULL) && (length==1) ) {
+      uint8 v = ( (char)*payload == '1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
+      if( v<99) {
+        char s[31];
+        thermState.autoMode = (bool)(v&1);
+        sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
+        thermSendMessage( ThermPacketType::Ignore, s );
+        mqttPublish(TOPIC_SetAutoMode,(char*)NULL, false);
+      }
     }
-    for ($i = 0; $i < 2; $i++){
-      $input_payload = array_push($input_payload,((int)$pararr[1][$i]['temp'] * 2));
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetLoopMode ) ) {
+    if( (payload != NULL) && (length>0) && (length<31) ) {
+      char s[31];
+      memset( s, 0, sizeof(s) );
+      strncpy( s, ((char*)payload), length );
+      errno = 0;
+      uint8 v = (uint8)atoi(s);
+      if ( (errno == 0) && (v>=0) && (v<=0x0F) ) {
+        char s[31];
+        thermState.loopMode = (v&0x0F);
+        sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
+        thermSendMessage( ThermPacketType::Ignore, s );
+        mqttPublish(TOPIC_SetLoopMode,(char*)NULL, false);
+      }
     }
-    $input_payload = array_merge(array(0x01,0x10,0x00,0x0a,0x00,0x0c,0x18),$input_payload);
-    $payload = self::prepare_request($input_payload);
-    $this->send_packet(0x6a, $payload);
-  }
-*/
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_AutoMode ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_Sensor ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_Hours ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_Minutes ) ) {
-    return true;
-  } else if( mqttIsTopic( topic, TOPIC_DayOfWeek ) ) {
     return true;
   }
   return false;
 }
+#pragma endregion
+
+#pragma region State publishing
 
 bool thermPublish( char* topic, float value, float* _value, bool retained ) {
   if( (value != *_value ) && mqttPublish( topic, value, retained) ) {
@@ -328,7 +315,6 @@ bool thermPublish( char* topic, float value, float* _value, bool retained ) {
     thermLastPublished = millis();
   }
 }
-
 bool thermPublish( char* topic, bool value, bool* _value, bool retained ) {
   if( ((int)value != (int)(*_value) ) && mqttPublish( topic, value, retained) ) {
     *_value = value;
@@ -347,13 +333,13 @@ bool thermPublish( char* topic, int value, int* _value, bool retained ) {
 void thermPublish() {
     unsigned long t = millis();
     // To avoid MQTT spam
-    if( (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
+    if( (thermLastStatus>0) && (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
 
     //thermPublish( TOPIC_, thermState., &_thermState., true );
-    thermPublish( TOPIC_Locked, thermState.isLocked, &_thermState.isLocked, true );
-    thermPublish( TOPIC_On, thermState.isOn, &_thermState.isOn, true );
-    thermPublish( TOPIC_Active, thermState.isActive, &_thermState.isActive, true );
-    thermPublish( TOPIC_Manual, thermState.isManual, &_thermState.isManual, true );
+    thermPublish( TOPIC_Locked, thermState.locked, &_thermState.locked, true );
+    thermPublish( TOPIC_On, thermState.on, &_thermState.on, true );
+    thermPublish( TOPIC_Heating, thermState.heating, &_thermState.heating, true );
+    thermPublish( TOPIC_TargetSetManually, thermState.targetSetManually, &_thermState.targetSetManually, true );
     thermPublish( TOPIC_RoomTemp, thermState.roomTemp, &_thermState.roomTemp, true );
     thermPublish( TOPIC_TargetTemp, thermState.targetTemp, &_thermState.targetTemp, true );
     thermPublish( TOPIC_TargetTempMax, thermState.targetTempMax, &_thermState.targetTempMax, true );
@@ -368,11 +354,22 @@ void thermPublish() {
 
     thermPublish( TOPIC_AntiFroze, thermState.antiFroze, &_thermState.antiFroze, true );
     thermPublish( TOPIC_PowerOnMemory, thermState.powerOnMemory, &_thermState.powerOnMemory, true );
-    thermPublish( TOPIC_Hours, thermState.hours, &_thermState.hours, true );
-    thermPublish( TOPIC_Minutes, thermState.minutes, &_thermState.minutes, true );
     thermPublish( TOPIC_DayOfWeek, thermState.dayOfWeek, &_thermState.dayOfWeek, true );
+    //thermPublish( TOPIC_Hours, thermState.hours, &_thermState.hours, true );
+    //thermPublish( TOPIC_Minutes, thermState.minutes, &_thermState.minutes, true );
+    if( (thermState.hours != _thermState.hours) || (thermState.minutes != _thermState.minutes) ) {
+      char s[16];
+      sprintf(s,"%02d:%02d", thermState.hours, thermState.minutes );
+      if( mqttPublish( TOPIC_Time, s, true)) {
+        _thermState.hours = thermState.hours;
+        _thermState.minutes = thermState.minutes;
+        thermLastPublished = millis();
+      }
+    }
 }
+#pragma endregion
 
+#pragma region Init & Loop
 void thermLoop() {
 	unsigned long t = millis();
 
@@ -410,3 +407,5 @@ void thermInit() {
   mqttRegisterCallbacks( thermCallback, thermConnect );
 	registerLoop(thermLoop);
 }
+
+#pragma endregion

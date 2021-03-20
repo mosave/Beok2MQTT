@@ -2,10 +2,10 @@
 #define thermostat_h
 
 struct ThermState {
-    bool isLocked;
-    bool isOn;
-    bool isActive;
-    bool isManual;
+    bool locked;
+    bool on;
+    bool heating;
+    bool targetSetManually;
 
     float roomTemp;
     float targetTemp;
@@ -34,8 +34,6 @@ extern ThermState thermState;
 
 //MCU_DEBUG only!!!
 void thermSendMessage( const char* data);
-
-bool thermIsAlive();
 
 void thermInit();
 #endif
