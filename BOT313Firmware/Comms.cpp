@@ -458,7 +458,11 @@ void commsInit() {
   storageRegisterBlock( COMMS_StorageId, &commsConfig, sizeof(commsConfig) );
 
 #ifdef WIFI_HostName
-  strcpy( commsConfig.hostName, WIFI_HostName );
+  uint8_t macAddr[6];
+  char macS[16];
+  sprintf( macS, "%02X%02X%02X%02X%02X%02X", macAddr[0], macAddr[1], macAddr[2],macAddr[3], macAddr[4], macAddr[5]);
+  WiFi.macAddress(macAddr);
+  sprintf( commsConfig.hostName, WIFI_HostName, macS);
 #endif  
 
 #ifdef MQTT_Root

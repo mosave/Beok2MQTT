@@ -35,7 +35,7 @@ bool mqttCallback(char* topic, byte* payload, unsigned int length) {
       char b[255];
       memset( b, 0, sizeof(b) );
       strncpy( b, ((char*)payload), length );
-      thermSendMessage(b);
+      thermSendMessage( b );
     }
     return true;
   }

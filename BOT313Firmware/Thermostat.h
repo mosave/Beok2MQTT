@@ -2,15 +2,32 @@
 #define thermostat_h
 
 struct ThermState {
+    bool isLocked;
     bool isOn;
-    bool autoMode;
-    char sensor;
-    float targetTemp;
+    bool isActive;
+    bool isManual;
+
     float roomTemp;
-    float externTemp;
+    float targetTemp;
+    float targetTempMax;
+    float targetTempMin;
+
+    float floorTemp;
+    float floorTempMax;
+
+    bool autoMode;
+    int loopMode;
+    int sensor;
+    float hysteresis;
+    float adjTemp;
+
+    bool antiFroze;
+    bool powerOnMemory;
+
     int hours;
     int minutes;
-    int dayofweek;
+    int seconds;
+    int dayOfWeek;
 };
 
 extern ThermState thermState;

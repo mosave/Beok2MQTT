@@ -13,7 +13,7 @@
 
 // Device host name and MQTT ClientId, "%s" to be replaced with MAC address
 // Disables SetName topic processing
-#define WIFI_HostName "Therm%s"
+#define WIFI_HostName "Therm_%s"
 
 //#define WIFI_SSID "SSID"
 //#define WIFI_Password  "Password"
@@ -24,15 +24,15 @@
     #include "Config.AE.h"
 #endif
 
-//#define USE_SOFT_SERIAL
+#define USE_SOFT_SERIAL
 
 #ifdef USE_SOFT_SERIAL
   #define aePrintf( ... ) Serial.printf( __VA_ARGS__ )
   #define aePrint( ... ) Serial.print( __VA_ARGS__ )
   #define aePrintln( ... ) Serial.println( __VA_ARGS__ )
 
-  #define THERM_RX D7
-  #define THERM_TX D6
+  #define THERM_RX D6
+  #define THERM_TX D7
 #else
   #define aePrintf( ... )
   #define aePrint( ... )
