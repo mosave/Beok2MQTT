@@ -27,6 +27,9 @@ static char* TOPIC_PowerOnMemory PROGMEM = "PowerOnMemory";
 static char* TOPIC_DayOfWeek PROGMEM = "DayOfWeek";
 static char* TOPIC_Time PROGMEM = "Time";
 
+static char* TOPIC_Schedule PROGMEM = "Schedule";
+static char* TOPIC_Schedule2 PROGMEM = "Schedule2";
+
 static char* TOPIC_SetTargetTemp PROGMEM = "SetTargetTemp";
 static char* TOPIC_SetOn PROGMEM = "SetPower";
 static char* TOPIC_SetLocked PROGMEM = "SetLocked";
@@ -220,6 +223,21 @@ bool thermProcessMessage() {
     // if ( $timeDelta > 30 ) {
     //   self::set_time($timeH,$timeM,$timeS,$timeD);
     // }
+
+    // If status packet have schedule data
+    if( thermDataLen > 46 ) {
+      for (int i = 0; i < 6; i++) {
+        thermState.schedule[i].h = thermData[2*i + 23];
+        thermState.schedule[i].m = thermData[2*i + 24];
+        thermState.schedule[i].t = (float)(thermData[i + 39]/2.0);
+        //aePrintf("%d: %d %d %f\n", i, thermState.schedule[i].h, thermState.schedule[i].m, thermState.schedule[i].t );
+        if( i<2 ) {
+          thermState.schedule2[i].h = thermData[2*(i+6) + 23];
+          thermState.schedule2[i].m = thermData[2*(i+6) + 24];
+          thermState.schedule2[i].t = (float)(thermData[ i + 6  + 39]/2.0);
+        }
+      }
+    }
     return true;
   }
   return false;
@@ -326,10 +344,16 @@ void thermTriggerActivity() {
 }
 
 bool thermPublish( char* topic, float value, float* _value, bool retained, bool activity ) {
-  if( (value != *_value ) && mqttPublish( topic, value, retained) ) {
-    *_value = value;
-    thermLastPublished = millis();
-    if( activity ) thermTriggerActivity();
+  if( (value != *_value ) ) {
+    char s[8];
+    dtostrf( value, 4,1, s );
+    char* p = s;
+    while( *p==' ') p++;
+    if( mqttPublish( topic, p, retained) ) {
+      *_value = value;
+      thermLastPublished = millis();
+      if( activity ) thermTriggerActivity();
+    }
   }
 }
 bool thermPublish( char* topic, bool value, bool* _value, bool retained, bool activity ) {
@@ -348,11 +372,30 @@ bool thermPublish( char* topic, int value, int* _value, bool retained, bool acti
   }
 }
 
+void sprintSchedule(char* s, ThermScheduleRecord schedule[], int recordCount ) {
+  *s=0;
+  char sr[16];
+  char sf[8];
+  if( (schedule[0].h>23) || (schedule[0].m>30) ) return;
+
+  for(int i=0; i<recordCount; i++ ){
+    dtostrf( schedule[i].t, 4,1, sf );
+    char* p = sf;
+    while( *p==' ') p++;
+
+    sprintf(sr,"%02d:%02d %s",schedule[i].h, schedule[i].m, p );
+    strcat(s,sr);
+    if(i+1<recordCount) strcat(s, ";");
+  }
+}
 
 void thermPublish() {
     unsigned long t = millis();
     // To avoid MQTT spam
     if( (thermLastStatus>0) && (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
+
+    char s[128];
+    char s1[128];
 
     thermPublish( TOPIC_Locked, thermState.locked, &_thermState.locked, true, true );
     thermPublish( TOPIC_On, thermState.on, &_thermState.on, true, true );
@@ -373,10 +416,7 @@ void thermPublish() {
     thermPublish( TOPIC_AntiFroze, thermState.antiFroze, &_thermState.antiFroze, true, false );
     thermPublish( TOPIC_PowerOnMemory, thermState.powerOnMemory, &_thermState.powerOnMemory, true, false );
     thermPublish( TOPIC_DayOfWeek, thermState.dayOfWeek, &_thermState.dayOfWeek, true, false );
-    //thermPublish( TOPIC_Hours, thermState.hours, &_thermState.hours, true );
-    //thermPublish( TOPIC_Minutes, thermState.minutes, &_thermState.minutes, true );
     if( (thermState.hours != _thermState.hours) || (thermState.minutes != _thermState.minutes) ) {
-      char s[16];
       sprintf(s,"%02d:%02d", thermState.hours, thermState.minutes );
       if( mqttPublish( TOPIC_Time, s, true)) {
         _thermState.hours = thermState.hours;
@@ -384,6 +424,24 @@ void thermPublish() {
         thermLastPublished = millis();
       }
     }
+    sprintSchedule(s,thermState.schedule, 6);
+    sprintSchedule(s1,_thermState.schedule, 6);
+    if( (strlen(s)>0) && (strcmp(s, s1)!=0) ) {
+      if( mqttPublish( TOPIC_Schedule, s, true)) {
+        memcpy(_thermState.schedule, thermState.schedule, sizeof(_thermState.schedule));
+        thermLastPublished = millis();
+      }
+    }
+
+    sprintSchedule(s,thermState.schedule2, 2);
+    sprintSchedule(s1,_thermState.schedule2, 2);
+    if( (strlen(s)>0) && (strcmp(s, s1)!=0) ) {
+      if( mqttPublish( TOPIC_Schedule2, s, true)) {
+        memcpy(_thermState.schedule2, thermState.schedule2, sizeof(_thermState.schedule2));
+        thermLastPublished = millis();
+      }
+    }
+
 }
 #pragma endregion
 

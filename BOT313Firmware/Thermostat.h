@@ -1,6 +1,12 @@
 #ifndef thermostat_h
 #define thermostat_h
 
+struct ThermScheduleRecord {
+    int8 h;
+    int8 m;
+    float t;
+};
+
 struct ThermState {
     bool locked;
     bool on;
@@ -28,6 +34,9 @@ struct ThermState {
     int minutes;
     int seconds;
     int dayOfWeek;
+
+    ThermScheduleRecord schedule[6];
+    ThermScheduleRecord schedule2[2];
 };
 
 extern ThermState thermState;
