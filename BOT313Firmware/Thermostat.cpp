@@ -35,6 +35,8 @@ static char* TOPIC_SetOn PROGMEM = "SetPower";
 static char* TOPIC_SetLocked PROGMEM = "SetLocked";
 static char* TOPIC_SetAutoMode PROGMEM = "SetAutoMode";
 static char* TOPIC_SetLoopMode PROGMEM = "SetLoopMode";
+static char* TOPIC_SetSchedule PROGMEM = "SetSchedule";
+static char* TOPIC_SetSchedule2 PROGMEM = "SetSchedule2";
 #pragma endregion Constants
 
 #pragma region Types and Vars
@@ -234,13 +236,86 @@ bool thermProcessMessage() {
         if( i<2 ) {
           thermState.schedule2[i].h = thermData[2*(i+6) + 23];
           thermState.schedule2[i].m = thermData[2*(i+6) + 24];
-          thermState.schedule2[i].t = (float)(thermData[ i + 6  + 39]/2.0);
+          thermState.schedule2[i].t = (float)   (thermData[ i + 6  + 39]/2.0);
         }
       }
     }
     return true;
   }
   return false;
+}
+#pragma endregion
+
+#pragma region Schedule helpers
+char* thermPrintSchedule(char* s, ThermScheduleRecord schedule[], int recordCount ) {
+  *s=0;
+  char sr[16];
+  char sf[8];
+  if( (schedule[0].h>23) || (schedule[0].m>30) ) return s;
+
+  for(int i=0; i<recordCount; i++ ){
+    dtostrf( schedule[i].t, 4,1, sf );
+    char* p = sf;
+    while( *p==' ') p++;
+
+    sprintf(sr,"%02d:%02d %s",schedule[i].h, schedule[i].m, p );
+    strcat(s,sr);
+    if(i+1<recordCount) strcat(s, ";");
+  }
+  return s;
+}
+
+void thermParseSchedule( char* payload, unsigned int length, ThermScheduleRecord schedule[], int recordCount ) {
+  if( (payload==NULL) || (length<10) ) return;
+  ThermScheduleRecord sch[6];
+  char* p = payload;
+  bool changed = false;
+  errno = 0;
+
+  for(int i=0; i<recordCount; i++) {
+    if(p>=payload+length) return;
+
+    sch[i].h = (int8)strtol( p, &p, 10 );
+    if( (errno != 0) || (sch[i].h<0) || (sch[i].h>23) ) return;
+    while( (p<payload+length) && ( (*p<'0') || (*p>'9') ) ) p++;
+
+    sch[i].m = (int8)strtol( p, &p, 10 );
+    if( (errno != 0) || (sch[i].m<0) || (sch[i].m>60) ) return;
+    while( (p<payload+length) && ( (*p<'0') || (*p>'9') ) ) p++;
+
+    sch[i].t = ((int)(strtof( p, &p )*2))/2.0;
+    if( (errno != 0) || (sch[i].t < thermState.targetTempMin) || (sch[i].t > thermState.targetTempMax) ) return;
+    while( (p<payload+length) && ( (*p<'0') || (*p>'9') ) ) p++;
+
+    if( (sch[i].h != schedule[i].h ) || (sch[i].m != schedule[i].m ) || ( (int)(sch[i].t*2) != (int)(schedule[i].t*2) ) ) changed = true;
+  }
+  
+  if( !changed ) return;
+  char s[128];
+  char s2[16];
+
+  //aePrintln(thermPrintSchedule( s, sch, recordCount ));
+  memcpy( schedule, sch, sizeof(ThermScheduleRecord)*recordCount);
+
+  strcpy(s, "0110000a000c18" );
+  for ( int i = 0; i < 6; i++) {
+    sprintf(s2, "%02x%02x ", thermState.schedule[i].h, thermState.schedule[i].m );
+    strcat(s,s2);
+  }
+  for ( int i = 0; i < 2; i++) {
+    sprintf(s2, "%02x%02x ", thermState.schedule2[i].h, thermState.schedule2[i].m );
+    strcat(s,s2);
+  }
+  for ( int i = 0; i < 6; i++) {
+    sprintf(s2, "%02x ", (int)(thermState.schedule[i].t*2) );
+    strcat(s,s2);
+  }
+  for ( int i = 0; i < 2; i++) {
+    sprintf(s2, "%02x ", (int)(thermState.schedule2[i].t*2) );
+    strcat(s,s2);
+  }
+  aePrintln(s);
+  thermSendMessage(s);
 }
 #pragma endregion
 
@@ -252,6 +327,8 @@ void thermConnect() {
   mqttSubscribeTopic( TOPIC_SetLocked );
   mqttSubscribeTopic( TOPIC_SetAutoMode );
   mqttSubscribeTopic( TOPIC_SetLoopMode );
+  mqttSubscribeTopic( TOPIC_SetSchedule );
+  mqttSubscribeTopic( TOPIC_SetSchedule2 );
   thermActivityLocked = millis();
 }
 
@@ -331,6 +408,18 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       mqttPublish(TOPIC_SetLoopMode,(char*)NULL, false);
     }
     return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetSchedule ) ) {
+    if( (payload != NULL) && (length>10) && (length<255) ) {
+      thermParseSchedule( (char*)payload, length, thermState.schedule, 6 );
+      mqttPublish(TOPIC_SetSchedule,(char*)NULL, false);
+    }
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetSchedule2 ) ) {
+    if( (payload != NULL) && (length>10) && (length<255) ) {
+      thermParseSchedule( (char*)payload, length, thermState.schedule2, 2 );
+      mqttPublish(TOPIC_SetSchedule2,(char*)NULL, false);
+    }
+    return true;
   }
   return false;
 }
@@ -372,23 +461,6 @@ bool thermPublish( char* topic, int value, int* _value, bool retained, bool acti
   }
 }
 
-void sprintSchedule(char* s, ThermScheduleRecord schedule[], int recordCount ) {
-  *s=0;
-  char sr[16];
-  char sf[8];
-  if( (schedule[0].h>23) || (schedule[0].m>30) ) return;
-
-  for(int i=0; i<recordCount; i++ ){
-    dtostrf( schedule[i].t, 4,1, sf );
-    char* p = sf;
-    while( *p==' ') p++;
-
-    sprintf(sr,"%02d:%02d %s",schedule[i].h, schedule[i].m, p );
-    strcat(s,sr);
-    if(i+1<recordCount) strcat(s, ";");
-  }
-}
-
 void thermPublish() {
     unsigned long t = millis();
     // To avoid MQTT spam
@@ -424,8 +496,8 @@ void thermPublish() {
         thermLastPublished = millis();
       }
     }
-    sprintSchedule(s,thermState.schedule, 6);
-    sprintSchedule(s1,_thermState.schedule, 6);
+    thermPrintSchedule(s,thermState.schedule, 6);
+    thermPrintSchedule(s1,_thermState.schedule, 6);
     if( (strlen(s)>0) && (strcmp(s, s1)!=0) ) {
       if( mqttPublish( TOPIC_Schedule, s, true)) {
         memcpy(_thermState.schedule, thermState.schedule, sizeof(_thermState.schedule));
@@ -433,8 +505,8 @@ void thermPublish() {
       }
     }
 
-    sprintSchedule(s,thermState.schedule2, 2);
-    sprintSchedule(s1,_thermState.schedule2, 2);
+    thermPrintSchedule(s,thermState.schedule2, 2);
+    thermPrintSchedule(s1,_thermState.schedule2, 2);
     if( (strlen(s)>0) && (strcmp(s, s1)!=0) ) {
       if( mqttPublish( TOPIC_Schedule2, s, true)) {
         memcpy(_thermState.schedule2, thermState.schedule2, sizeof(_thermState.schedule2));
