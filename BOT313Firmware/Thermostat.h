@@ -33,7 +33,7 @@ struct ThermState {
     int hours;
     int minutes;
     int seconds;
-    int dayOfWeek;
+    int weekday;
 
     ThermScheduleRecord schedule[6];
     ThermScheduleRecord schedule2[2];

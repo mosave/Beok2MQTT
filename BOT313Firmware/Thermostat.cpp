@@ -24,7 +24,7 @@ static char* TOPIC_Hysteresis PROGMEM = "Hysteresis";
 static char* TOPIC_AdjTemp PROGMEM = "AdjTemp";
 static char* TOPIC_AntiFroze PROGMEM = "AntiFroze";
 static char* TOPIC_PowerOnMemory PROGMEM = "PowerOnMemory";
-static char* TOPIC_DayOfWeek PROGMEM = "DayOfWeek";
+static char* TOPIC_Weekday PROGMEM = "Weekday";
 static char* TOPIC_Time PROGMEM = "Time";
 
 static char* TOPIC_Schedule PROGMEM = "Schedule";
@@ -37,6 +37,9 @@ static char* TOPIC_SetAutoMode PROGMEM = "SetAutoMode";
 static char* TOPIC_SetLoopMode PROGMEM = "SetLoopMode";
 static char* TOPIC_SetSchedule PROGMEM = "SetSchedule";
 static char* TOPIC_SetSchedule2 PROGMEM = "SetSchedule2";
+
+static char* TOPIC_SetTime PROGMEM = "SetTime";
+static char* TOPIC_SetWeekday PROGMEM = "SetWeekday";
 #pragma endregion Constants
 
 #pragma region Types and Vars
@@ -201,7 +204,7 @@ bool thermProcessMessage() {
     thermState.hours =  thermData[19];
     thermState.minutes =  thermData[20];
     thermState.seconds =  thermData[21];
-    thermState.dayOfWeek =  thermData[22];
+    thermState.weekday =  thermData[22];
 
     // //*** Thermostat time validation
     // $timeH = (int)date("G", time());
@@ -213,7 +216,7 @@ bool thermProcessMessage() {
     // $timeCurrent = ( (($timeD-1)*24 + $timeH) * 60 + $timeM ) * 60 + $timeS;
 
     //                               // Get thermostat time in week seconds
-    // $timeTherm = ( (($data['dayofweek']-1)*24 + $data['hour']) * 60 + $data['min'] ) * 60 + $payload[21];
+    // $timeTherm = ( (($data['weekday']-1)*24 + $data['hour']) * 60 + $data['min'] ) * 60 + $payload[21];
 
     // // Delta time, seconds
     // $timeDelta = abs( $timeCurrent - $timeTherm);
@@ -267,33 +270,35 @@ char* thermPrintSchedule(char* s, ThermScheduleRecord schedule[], int recordCoun
 
 void thermParseSchedule( char* payload, unsigned int length, ThermScheduleRecord schedule[], int recordCount ) {
   if( (payload==NULL) || (length<10) ) return;
+  char s[256];
+  char s2[16];
   ThermScheduleRecord sch[6];
-  char* p = payload;
+  char* p = s;
   bool changed = false;
   errno = 0;
+  memset(s, 0, sizeof(s));
+  strncpy(s, payload,length);
 
   for(int i=0; i<recordCount; i++) {
-    if(p>=payload+length) return;
+    if( *p == 0 ) return;
 
     sch[i].h = (int8)strtol( p, &p, 10 );
     if( (errno != 0) || (sch[i].h<0) || (sch[i].h>23) ) return;
-    while( (p<payload+length) && ( (*p<'0') || (*p>'9') ) ) p++;
+    while( (*p != 0) && ( (*p<'0') || (*p>'9') ) ) p++;
 
     sch[i].m = (int8)strtol( p, &p, 10 );
     if( (errno != 0) || (sch[i].m<0) || (sch[i].m>60) ) return;
-    while( (p<payload+length) && ( (*p<'0') || (*p>'9') ) ) p++;
+    while( (*p != 0) && ( (*p<'0') || (*p>'9') ) ) p++;
 
     sch[i].t = ((int)(strtof( p, &p )*2))/2.0;
     if( (errno != 0) || (sch[i].t < thermState.targetTempMin) || (sch[i].t > thermState.targetTempMax) ) return;
-    while( (p<payload+length) && ( (*p<'0') || (*p>'9') ) ) p++;
+    while( (*p != 0) && ( (*p<'0') || (*p>'9') ) ) p++;
 
     if( (sch[i].h != schedule[i].h ) || (sch[i].m != schedule[i].m ) || ( (int)(sch[i].t*2) != (int)(schedule[i].t*2) ) ) changed = true;
   }
   
   if( !changed ) return;
-  char s[128];
-  char s2[16];
-
+  
   //aePrintln(thermPrintSchedule( s, sch, recordCount ));
   memcpy( schedule, sch, sizeof(ThermScheduleRecord)*recordCount);
 
@@ -329,6 +334,8 @@ void thermConnect() {
   mqttSubscribeTopic( TOPIC_SetLoopMode );
   mqttSubscribeTopic( TOPIC_SetSchedule );
   mqttSubscribeTopic( TOPIC_SetSchedule2 );
+  mqttSubscribeTopic( TOPIC_SetTime );
+  mqttSubscribeTopic( TOPIC_SetWeekday );
   thermActivityLocked = millis();
 }
 
@@ -420,6 +427,48 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       mqttPublish(TOPIC_SetSchedule2,(char*)NULL, false);
     }
     return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetWeekday ) ) {
+    if( (payload != NULL) && (length>0) ) {
+      if ( (length==1) && (*payload >='1') && (*payload <='7') ) {
+        int v = (*payload)-'0';
+        if( thermState.weekday != v ) {
+          thermActivityLocked = millis();
+          thermState.weekday = v;
+          char s[31];
+          //0x01,0x10,0x00,0x08,0x00,0x02,0x04,$hour,$minute,$second,$day));
+          sprintf(s, "01100008000204%02x%02x%02x%02x", thermState.hours, thermState.minutes, thermState.seconds, thermState.weekday );
+          thermSendMessage( s );
+        }
+      }
+      mqttPublish(TOPIC_SetWeekday,(char*)NULL, false);
+    }
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetTime ) ) {
+    if( (payload != NULL) && (length>0) && (length<=5) ) {
+      char s[8];
+      memset(s, 0, sizeof(s));
+      memcpy(s, payload, length);
+      char* p = s;
+      errno = 0;
+      int h = (int8)strtol( p, &p, 10 );
+      aePrintln(h);
+      if( (errno == 0) && ( *p != 0 ) && (h>=0) && (h<=23) ) {
+        while( (*p != 0) && ( (*p<'0') || (*p>'9') ) ) p++;
+        int m = (int8)strtol( p, NULL, 10 );
+        aePrintln(m);
+        if( (errno == 0) && (m>=0) && (m<=59) && ((thermState.hours != h) || (thermState.minutes != m)) ) {
+          thermActivityLocked = millis();
+          thermState.hours = h;
+          thermState.minutes = m;
+          thermState.seconds = 0;
+          char s[31];
+          sprintf(s, "01100008000204%02x%02x%02x%02x", thermState.hours, thermState.minutes, thermState.seconds, thermState.weekday );
+          thermSendMessage( s );
+        }
+      }
+      mqttPublish(TOPIC_SetTime,(char*)NULL, false);
+    }
+    return true;
   }
   return false;
 }
@@ -487,7 +536,7 @@ void thermPublish() {
 
     thermPublish( TOPIC_AntiFroze, thermState.antiFroze, &_thermState.antiFroze, true, false );
     thermPublish( TOPIC_PowerOnMemory, thermState.powerOnMemory, &_thermState.powerOnMemory, true, false );
-    thermPublish( TOPIC_DayOfWeek, thermState.dayOfWeek, &_thermState.dayOfWeek, true, false );
+    thermPublish( TOPIC_Weekday, thermState.weekday, &_thermState.weekday, true, false );
     if( (thermState.hours != _thermState.hours) || (thermState.minutes != _thermState.minutes) ) {
       sprintf(s,"%02d:%02d", thermState.hours, thermState.minutes );
       if( mqttPublish( TOPIC_Time, s, true)) {
