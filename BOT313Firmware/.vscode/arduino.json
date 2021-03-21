@@ -4,5 +4,5 @@
     "output": "c:/windows/temp/ArduinoOutput",
     "sketch": "BOT313Firmware.ino",
     "programmer": "USBasp",
-    "port": "COM10"
+    "port": "COM9"
 }

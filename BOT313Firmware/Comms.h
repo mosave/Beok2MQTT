@@ -48,6 +48,8 @@ void triggerActivity();
 
 void mqttRegisterCallbacks( MQTT_CALLBACK, MQTT_CONNECT );
 
+bool commsOTAEnabled();
+
 void commsEnableOTA();
 void commsRestart();
 void commsClearTopicAndRestart( char* topic );

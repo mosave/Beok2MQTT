@@ -451,11 +451,9 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       char* p = s;
       errno = 0;
       int h = (int8)strtol( p, &p, 10 );
-      aePrintln(h);
       if( (errno == 0) && ( *p != 0 ) && (h>=0) && (h<=23) ) {
         while( (*p != 0) && ( (*p<'0') || (*p>'9') ) ) p++;
         int m = (int8)strtol( p, NULL, 10 );
-        aePrintln(m);
         if( (errno == 0) && (m>=0) && (m<=59) && ((thermState.hours != h) || (thermState.minutes != m)) ) {
           thermActivityLocked = millis();
           thermState.hours = h;
@@ -513,7 +511,7 @@ bool thermPublish( char* topic, int value, int* _value, bool retained, bool acti
 void thermPublish() {
     unsigned long t = millis();
     // To avoid MQTT spam
-    if( (thermLastStatus>0) && (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
+    if( (thermLastStatus==0) || (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
 
     char s[128];
     char s1[128];
@@ -568,6 +566,8 @@ void thermPublish() {
 
 #pragma region Init & Loop
 void thermLoop() {
+  if(commsOTAEnabled()) return;
+  
   static unsigned long lastRead = 0;
   static unsigned long lastMaintenance = 0;
   

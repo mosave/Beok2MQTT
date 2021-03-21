@@ -68,7 +68,7 @@ void setup() {
   mqttRegisterCallbacks( mqttCallback, mqttConnect );
 
   thermInit();
-  commsEnableOTA();
+  //commsEnableOTA();
 }
 
 void loop() {

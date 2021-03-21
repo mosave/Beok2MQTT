@@ -303,7 +303,6 @@ void mqttCallbackProxy(char* topic, byte* payload, unsigned int length) {
     }
 #endif
   } else if( mqttIsTopic( topic, TOPIC_EnableOTA ) ) {
-    mqttPublish( TOPIC_EnableOTA, (char*)NULL, false );
     commsEnableOTA();
   }
   
@@ -339,24 +338,24 @@ void commsLoop() {
           ArduinoOTA.setPassword(WIFI_Password);
           ArduinoOTA.onStart([]() {
             mqttPublish( TOPIC_Online, (long)0, true );
-            aePrintln(F("OTA: Updating firmware"));
+//            aePrintln(F("OTA: Updating firmware"));
             storageSave();
             LittleFS.end();
           });
           ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-            aePrint(F("."));
-            otaProgress++;
-            if(otaProgress>=100) {
-              otaProgress = 0; 
-              aePrintln();
-            }
+//            aePrint(F("."));
+//            otaProgress++;
+//            if(otaProgress>=100) {
+//              otaProgress = 0; 
+//              aePrintln();
+//            }
           });
           ArduinoOTA.onEnd([]() {
             aePrintln(F("\nOTA: Firmware updated. Restarting"));
           });
           ArduinoOTA.onError([](ota_error_t error) {
             aePrintln(F("OTA: Error updating firmware. Restarting\r"));
-            commsClearTopicAndRestart(TOPIC_EnableOTA);
+            commsRestart();
           });      
           ArduinoOTA.begin();
           return;
@@ -366,7 +365,7 @@ void commsLoop() {
       } else {
         mqttPublish( TOPIC_Online, (long)0, true );
         aePrintln(F("OTA: Timeout waiting for update. Restarting"));
-        commsClearTopicAndRestart(TOPIC_EnableOTA);
+        commsRestart();
       }
     }
     static bool wasConnected = false;
@@ -448,12 +447,16 @@ void commsLoop() {
   }
 }
 
+bool commsOTAEnabled(){
+  return (otaEnabled>0);
+}
 void commsEnableOTA() {
   aePrintln(F("OTA: Enabled"));
   if( otaEnabled == 0 ) {
     otaShouldInit = true;
   }
   otaEnabled = millis();
+  Serial.end();
 }
 
 void commsRestart() {
@@ -486,8 +489,8 @@ void commsInit() {
 #ifdef WIFI_HostName
   uint8_t macAddr[6];
   char macS[16];
-  sprintf( macS, "%02X%02X%02X%02X%02X%02X", macAddr[0], macAddr[1], macAddr[2],macAddr[3], macAddr[4], macAddr[5]);
   WiFi.macAddress(macAddr);
+  sprintf( macS, "%02X%02X%02X%02X%02X%02X", macAddr[0], macAddr[1], macAddr[2],macAddr[3], macAddr[4], macAddr[5]);
   sprintf( commsConfig.hostName, WIFI_HostName, macS);
 #endif  
 
