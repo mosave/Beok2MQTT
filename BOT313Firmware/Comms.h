@@ -50,6 +50,9 @@ void mqttRegisterCallbacks( MQTT_CALLBACK, MQTT_CONNECT );
 
 void commsEnableOTA();
 void commsRestart();
+void commsClearTopicAndRestart( char* topic );
+void commsClearTopicAndRestart( char* topic, char* topicVar1 );
+void commsClearTopicAndRestart( char* topic, char* topicVar1, char* topicVar2 );
 
 // Comms engine
 void commsInit();
