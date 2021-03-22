@@ -32,3 +32,5 @@
 
 ### Фотографии
 
+
+[Несколько фотографий лежат здесь](https://github.com/mosave/Beok2MQTT/tree/main/Photos)
