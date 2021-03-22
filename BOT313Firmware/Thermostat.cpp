@@ -11,7 +11,7 @@ static char* TOPIC_Heating PROGMEM = "Heating";
 static char* TOPIC_TargetSetManually PROGMEM = "TargetSetManually";
 static char* TOPIC_RoomTemp PROGMEM = "RoomTemp";
 static char* TOPIC_FloorTemp PROGMEM = "FloorTemp";
-static char* TOPIC_FloorTempMax PROGMEM = "FloorTemp";
+static char* TOPIC_FloorTempMax PROGMEM = "FloorTempMax";
 static char* TOPIC_TargetTemp PROGMEM = "TargetTemp";
 
 static char* TOPIC_TargetTempMax PROGMEM = "TargetTempMax";
@@ -34,6 +34,7 @@ static char* TOPIC_SetTargetTemp PROGMEM = "SetTargetTemp";
 static char* TOPIC_SetOn PROGMEM = "SetPower";
 static char* TOPIC_SetLocked PROGMEM = "SetLocked";
 static char* TOPIC_SetAutoMode PROGMEM = "SetAutoMode";
+static char* TOPIC_SetSensor PROGMEM = "SetSensor";
 static char* TOPIC_SetLoopMode PROGMEM = "SetLoopMode";
 static char* TOPIC_SetSchedule PROGMEM = "SetSchedule";
 static char* TOPIC_SetSchedule2 PROGMEM = "SetSchedule2";
@@ -396,6 +397,23 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermSendMessage( s );
       }
       mqttPublish(TOPIC_SetAutoMode,(char*)NULL, false);
+    }
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetSensor ) ) {
+    if( (payload != NULL) && (length>0) && (length<31) ) {
+      char s[31];
+      memset( s, 0, sizeof(s) );
+      strncpy( s, ((char*)payload), length );
+      errno = 0;
+      uint8 v = (uint8)atoi(s);
+      if ( (errno == 0) && (v>=0) && (v<=0x0F) && (thermState.sensor != (v&0x0F)) ) {
+        thermActivityLocked = millis();
+        thermState.sensor = (v&0x0F);
+        char s[31];
+        sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
+        thermSendMessage( s );
+      }
+      mqttPublish(TOPIC_SetLoopMode,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetLoopMode ) ) {
