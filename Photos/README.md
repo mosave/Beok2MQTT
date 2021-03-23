@@ -10,10 +10,11 @@
 ### Модуль Broadlink BL335-P
 ![Broadlink BL335-P](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p04%20Broadlink%20BL335-P.jpg)
 
-### Плата контроллера BOT-313 WiFi (WH) с UART сканером
+### Плата контроллера BOT-313 WiFi (WH) с подключенным UART сканером
 ![BOT-313 WiFi (WH) с UART сканером](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p05%20Control%20Board.jpg)
 
 ### Плата контроллера TGP-51 WiFi (WH)
+*Термостаты для бойлера поддерживают только один (встроенный) датчик температуры. Провода и дополнительный разъем на фотографии - вход внешнего датчика температуры, выбираемого переключателем*
 ![TGP-51 WiFi (WH)](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p05%20Control%20Board%202.jpg)
 
 ### Тестовая конфигурация: WeMos D1, для управления термостатом задействаован SoftSerial
