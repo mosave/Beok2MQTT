@@ -36,7 +36,8 @@
  * GN D<-> GND
  * RX <-> TX
  * TX <-> RX
- * SCL <-> SCL
- * SDA <-> SDA
+ При подключении к ESP дополнительного i2c сенсора выходы GPIO0 и GPIO2 можно использовать как SDA и SLC соответственно.
+ * GPIO2 <-> SDA
+ * GPIO0 <-> SCL
 
 ![Wiring](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p10%20Wiring.jpg)
