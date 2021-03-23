@@ -61,6 +61,7 @@ unsigned long thermLastStatus = 0;
 unsigned long thermLastPublished = 0;
 unsigned long thermActivityLocked = 0;
 uint16 thermCRC = 0;
+bool thermDisabled = false;
 
 #ifdef USE_SOFT_SERIAL
 	#include <SoftwareSerial.h>
@@ -336,6 +337,7 @@ void thermConnect() {
   mqttSubscribeTopic( TOPIC_SetSchedule2 );
   mqttSubscribeTopic( TOPIC_SetTime );
   mqttSubscribeTopic( TOPIC_SetWeekday );
+  mqttSubscribeTopic( TOPIC_SetSensor );
   thermActivityLocked = millis();
 }
 
@@ -412,7 +414,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetLoopMode,(char*)NULL, false);
+      mqttPublish(TOPIC_SetSensor,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetLoopMode ) ) {
@@ -483,6 +485,12 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       }
       mqttPublish(TOPIC_SetTime,(char*)NULL, false);
     }
+    return true;
+  } else if( mqttIsTopic( topic, "EnableOTA" ) ) {
+    thermDisabled = true;
+    thermSetWiFiSign(ThermWiFiState::Blink );
+    delay(100);
+    commsEnableOTA();
     return true;
   }
   return false;
@@ -583,7 +591,7 @@ void thermPublish() {
 
 #pragma region Init & Loop
 void thermLoop() {
-  if(commsOTAEnabled()) return;
+  if(thermDisabled) return;
   
   static unsigned long lastRead = 0;
   static unsigned long lastMaintenance = 0;
@@ -613,19 +621,19 @@ void thermLoop() {
     // Get MCU status every few seconds
     if( (unsigned long)(t - thermLastStatus) > (unsigned long)5000 ) {
       thermSendMessage( "010300000016");
+    } else {
+      static char _wifiState = 99;
+      ThermWiFiState wifiState = 
+          !wifiEnabled() ? ThermWiFiState::Off :
+          !wifiConnected() ? ThermWiFiState::BlinkFast :
+          !mqttConnected() ? ThermWiFiState::Blink : 
+          ThermWiFiState::On;
+  
+      if( _wifiState != (char)wifiState) {
+        thermSetWiFiSign( wifiState );
+        _wifiState = (char)wifiState;
+      }
     }
-    static char _wifiState = 99;
-    ThermWiFiState wifiState = 
-        !wifiEnabled() ? ThermWiFiState::Off :
-        !wifiConnected() ? ThermWiFiState::BlinkFast :
-        !mqttConnected() ? ThermWiFiState::Blink : 
-        ThermWiFiState::On;
-
-    if( _wifiState != (char)wifiState) {
-      thermSetWiFiSign( wifiState );
-      _wifiState = (char)wifiState;
-    }
-
     lastMaintenance = t;
   } else {
     thermPublish();
