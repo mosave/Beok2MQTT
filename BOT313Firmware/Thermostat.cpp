@@ -197,8 +197,7 @@ bool thermProcessMessage() {
     thermState.loopMode =  (thermData[7] >> 4) & 0x0F;
     thermState.sensor = thermData[8];
     thermState.hysteresis = thermData[10] / 2.0;
-    thermState.adjTemp = ((thermData[13] << 8) + thermData[14])/2.0;
-    if( thermState.adjTemp > 32767 ) thermState.adjTemp = 32767 - thermState.adjTemp;
+    thermState.adjTemp = ((int16_t)((thermData[13] << 8) + thermData[14]))/2.0;
     thermState.antiFroze = (thermData[15] & 1);
     thermState.powerOnMemory = (thermData[16] & 1);
 
