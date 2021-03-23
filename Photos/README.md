@@ -31,12 +31,11 @@
 
 ### "Принципиальная схема" :sunglasses:
 
-VCC<->VCC
-GND<->GND
-RX<->TX
-TX<->RX
+ * VCC <-> VCC
+ * GN D<-> GND
+ * RX <-> TX
+ * TX <-> RX
+ * SCL <-> SCL
+ * SDA <-> SDA
 
-SCL <-> SCL
-SDA <-> SDA
-
-Нужно нарисовать? Как-нибудь позднее
+![Wiring](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p10%20Wiring.jpg)
