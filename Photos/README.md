@@ -24,7 +24,7 @@
 ![Модуль Broadlink заменен на ESP-01](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p07%20ESP-01%20installed.jpg)
 
 ### Модуль ESP-01S с дополнительным цифровым датчиком влажности GY-213/HTDU21D
-В пути, будет добавлено позднее
+GY 213 пока путешествует где-то в недрах российской почты. Фотография будет добавлена позднее.
 
 ### Дерево MQTT топиков термостата
 ![MQTT Tree](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p09%20MQTT%20Tree.jpg)
@@ -37,7 +37,7 @@
  * RX <-> TX
  * TX <-> RX
  
- При подключении к ESP дополнительного i2c сенсора выходы GPIO0 и GPIO2 можно использовать как SDA и SLC соответственно.
+ При подключении к ESP дополнительного i2c сенсора выходы GPIO0 и GPIO2 можно использовать как SDA и SCL:
  * GPIO2 <-> SDA
  * GPIO0 <-> SCL
 
