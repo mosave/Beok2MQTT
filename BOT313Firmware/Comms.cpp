@@ -7,10 +7,24 @@
 #include "Comms.h"
 #include "Storage.h"
 
+#ifdef MQTT_Address
+#elif MQTT_Port
+#else
+  #define MQTT_MDNS
+  #define mqttMdnsSize 4
+
+struct mqttMdnsRecord {
+  char address[16];
+  uint16 port;
+};
+mqttMdnsRecord mqttMdns[mqttMdnsSize];
+#endif
+
 //#define Debug
 
 // Time to wait between connection attempts
 #define COMMS_ConnectTimeout ((unsigned long)(60 * 1000))
+#define COMMS_ConnectNextTimeout ((unsigned long)(3 * 1000))
 // Number of connection attempts before resetting controller
 #define COMMS_ConnectAttempts 1000000
 // Time to wait between RSSI reports
@@ -61,6 +75,10 @@ unsigned long commsConnecting;
 unsigned long commsConnectAttempt = 0;
 unsigned long commsPaused;
 unsigned long commsRssiReported;
+unsigned long commsPauseTimeout = COMMS_ConnectTimeout;
+
+int mqttMdnsIndex = 0;
+int mqttMdnsCnt = 0;
 
 unsigned long otaEnabled;
 bool otaShouldInit;
@@ -392,7 +410,38 @@ void commsLoop() {
         wasConnected = false;
       }
       if( commsPaused == 0 ) {
+        bool tryConnect = true;
+#ifdef MQTT_MDNS
+        if( mqttMdnsCnt<=0 ) {
+          mqttMdnsIndex = 0;
+          memset( mqttMdns, 0, sizeof(mqttMdns));
+
+          aePrintln(F("MQTT: Querying MDNS for broker"));
+          mqttMdnsCnt = MDNS.queryService("mqtt", "tcp");
+          if( mqttMdnsCnt>mqttMdnsSize ) mqttMdnsCnt=mqttMdnsSize;
+          for (int i = 0; i < mqttMdnsCnt; ++i) {
+            IPAddress ip = MDNS.IP(i);
+            sprintf( mqttMdns[i].address, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+            mqttMdns[i].port = MDNS.port(i);
+          }
+        }
+        aePrintf("MQTT: %d answer(s)received\n", mqttMdnsCnt );
+
+        if( mqttMdnsCnt>0 ) {
+          aePrintf("MQTT: Connecting broker #%d %s:%d\r\n", mqttMdnsIndex, mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );
+          mqttClient.setServer( mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );
+          mqttMdnsIndex++;
+          if( mqttMdnsIndex>=mqttMdnsCnt ) {
+            mqttMdnsCnt = 0;
+            mqttMdnsIndex = 0;
+          }
+        } else {
+          tryConnect = false;
+        }
+#else
         mqttClient.setServer( MQTT_Address, MQTT_Port);
+#endif
+
         mqttClient.setCallback( mqttCallbackProxy );
         
         char willTopic[63];
@@ -400,7 +449,7 @@ void commsLoop() {
         aePrint(F("MQTT: Connecting as ")); aePrintln(willTopic);
         
         mqttTopic( willTopic, TOPIC_Online );
-        if( mqttClient.connect( commsConfig.hostName, willTopic, 0, true, "0" ) ) {
+        if( tryConnect && mqttClient.connect( commsConfig.hostName, willTopic, 0, true, "0" ) ) {
           commsConnectAttempt = 0;
           aePrintln(F("MQTT: Connected"));
           // Subscribe
@@ -433,7 +482,11 @@ void commsLoop() {
         }
         return; // Split activity to not overload loop
       } else {
-        if( (unsigned long)(t - commsPaused) > COMMS_ConnectTimeout ) {
+#ifdef MQTT_MDNS 
+        if( (unsigned long)(t - commsPaused) > ((mqttMdnsCnt>0) ? COMMS_ConnectNextTimeout : COMMS_ConnectTimeout)  ) {
+#else
+        if( (unsigned long)(t - commsPaused) > COMMS_ConnectTimeout) {
+#endif
           commsReconnect();
         }
       }

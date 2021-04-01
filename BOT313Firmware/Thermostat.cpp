@@ -476,7 +476,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         if( (errno == 0) && (m>=0) && (m<=59) && ((thermState.hours != h) || (thermState.minutes != m)) ) {
           while( (*p != 0) && ( (*p<'0') || (*p>'9') ) ) p++;
           thermState.seconds = (int8)strtol( p, NULL, 10 );
-          if( (errno != 0) || (sec<0) || (sec>59) ) thermState.seconds = 0;
+          if( (errno != 0) || (thermState.seconds<0) || (thermState.seconds>59) ) thermState.seconds = 0;
 
           thermActivityLocked = millis();
           thermState.hours = h;

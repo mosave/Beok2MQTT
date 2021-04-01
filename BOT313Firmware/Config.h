@@ -17,6 +17,10 @@
 
 //#define WIFI_SSID "SSID"
 //#define WIFI_Password  "Password"
+
+// If NO MQTT address or port defined then client will search for
+// mDNS advertisement with service type="mqtt" and protocol="tcp"
+//
 //#define MQTT_Address "1.1.1.33"
 //#define MQTT_Port 1883
 
