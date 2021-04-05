@@ -341,7 +341,7 @@ void commsLoop() {
       commsConnecting = 0;
       aePrint(F("WIFI: Connected as ")); aePrint( WiFi.hostname() ); aePrint(F("/")); aePrintln( WiFi.localIP() );
       if( !MDNS.begin(commsConfig.hostName) ) {
-        aePrintln(F("MDNQ: begin() failed"));
+        aePrintln(F("WIFI: MDNS.begin() failed"));
       }
       return; // Split activity to not overload loop
     }
@@ -425,7 +425,7 @@ void commsLoop() {
             mqttMdns[i].port = MDNS.port(i);
           }
         }
-        aePrintf("MQTT: %d answer(s)received\n", mqttMdnsCnt );
+        aePrintf("MQTT: %d broker(s) announced\n", mqttMdnsCnt );
 
         if( mqttMdnsCnt>0 ) {
           aePrintf("MQTT: Connecting broker #%d %s:%d\r\n", mqttMdnsIndex, mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );

@@ -24,6 +24,10 @@
 //#define MQTT_Address "1.1.1.33"
 //#define MQTT_Port 1883
 
+// Define this to use external THU21D based sensor (temperature & humidity)
+//#define USE_HTU21D
+
+
 #ifndef WIFI_SSID
     #include "Config.AE.h"
 #endif
@@ -45,6 +49,10 @@
   #define aePrintln( ... )
 #endif
 
+#ifdef USE_HTU21D
+  #define SDA_Pin 0
+  #define SCL_Pin 2
+#endif
 
 #define LOOP std::function<void()>
 

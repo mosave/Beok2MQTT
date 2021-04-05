@@ -1,7 +1,7 @@
 // Tuya module configuration to reflash:
 // Board: ESP8266 generic (Chip is ESP8266EX)
 // Crystal is 26MHz
-// Flash size: 2MB
+// Flash size: 1MB
 // Erase Flash: ALL content
 
 #include <stdarg.h>
@@ -9,6 +9,11 @@
 #include "Storage.h"
 #include "Comms.h"
 #include "Thermostat.h"
+
+#ifdef USE_HTU21D
+  #include <Wire.h>
+  #include "tah_htu21d.h"
+#endif
 
 static char* TOPIC_State PROGMEM = "State";
 static char* TOPIC_SendCommand PROGMEM = "SendCommand";
@@ -64,7 +69,10 @@ void setup() {
 
   storageInit();
   commsInit();
-
+#ifdef USE_HTU21D
+  Wire.begin(SDA_Pin, SCL_Pin);
+  tahInit();
+#endif
   mqttRegisterCallbacks( mqttCallback, mqttConnect );
 
   thermInit();
