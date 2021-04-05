@@ -25,6 +25,7 @@
 
 ### Модуль ESP-01S с дополнительным цифровым датчиком влажности GY-213/HTDU21D
 GY 213 пока путешествует где-то в недрах российской почты. Фотография будет добавлена позднее.
+![Датчик влажности](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p08%20ESP+GY213V.jpg)
 
 ### Дерево MQTT топиков термостата
 ![MQTT Tree](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p09%20MQTT%20Tree.jpg)
@@ -42,3 +43,7 @@ GY 213 пока путешествует где-то в недрах росси�
  * GPIO0 <-> SCL
 
 ![Wiring](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p10%20Wiring.jpg)
+
+
+### Как выглядит Хаос
+![Chaos](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p11%20Workplace%20Chaos.jpg)
