@@ -24,7 +24,7 @@
     * Все термостаты, совместимые с модулем [Broadlink для MajorDoMo в режиме "PHP only"](https://connect.smartliving.ru/addons/category1/32.html).
     * С большой вероятностью любой [WiFi термостат Beok](http://www.beok-controls.com/product.asp). Но здесь, понятно, никаких гарантий дать нельзя.
   * ESP-01S или любой другой ESP8266 модуль (от $10/10шт)
-  * Дополнительный датчик влажности и температуры [GY-213V-HTU21D](https://www.aliexpress.com/item/32482508209.html) ($5.8/10шт)
+  * Дополнительный датчик влажности [GY-213V-HTU21D](https://www.aliexpress.com/item/32482508209.html) ($11/10шт)
 
 ### Прошивка WiFi контроллера
 

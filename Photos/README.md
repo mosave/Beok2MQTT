@@ -45,5 +45,5 @@ GY 213 пока путешествует где-то в недрах росси�
 ![Wiring](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p10%20Wiring.jpg)
 
 
-### Как выглядит Хаос
+### Что такое хаос
 ![Chaos](https://github.com/mosave/Beok2MQTT/raw/main/Photos/p11%20Workplace%20Chaos.jpg)
