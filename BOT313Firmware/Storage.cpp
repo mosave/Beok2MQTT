@@ -82,7 +82,6 @@ void storageRead() {
   
   EEPROM.get( 0, storageSnapshot);
   if( (storageSnapshot[0] != 0x41) || (storageSnapshot[1] != 0x45) ) {
-    aePrintln(F("Storage reading error. Resetting"));
     memset( storageSnapshot, 0, STORAGE_Size );
     storageSnapshot[0] = 0x41;
     storageSnapshot[1] = 0x45;
@@ -144,16 +143,22 @@ void storageLoop() {
 // Initialize library and crear storage block
 void storageInit( bool reset ) {
   static bool initialized = false;
-  if( initialized ) return;
-  initialized = true;
-  EEPROM.begin( STORAGE_Size );
+  if( !initialized ) {
+    EEPROM.begin( STORAGE_Size );
+    registerLoop(storageLoop);
+  }
+
   if( reset ) {
     memset( storageSnapshot, 0, sizeof(storageSnapshot) );
+    EEPROM.put( 0, storageSnapshot);
+    EEPROM.commit();
     changedOn = 0;
-  } else {
+  }
+  
+  if( !initialized ) {
+    initialized = true;
     storageRead();
   }
-  registerLoop(storageLoop);
 }
 
 void storageInit() {
@@ -161,9 +166,11 @@ void storageInit() {
 }
 
 void storageReset() {
-  storageInit(true);  
   aePrintln(F("Clearing Storage"));
+  storageInit();
   memset( storageSnapshot, 0, sizeof(storageSnapshot) );
-  delay(1000);;
+  EEPROM.put( 0, storageSnapshot);
+  EEPROM.commit();
+  delay(1000);
   ESP.restart();
 }

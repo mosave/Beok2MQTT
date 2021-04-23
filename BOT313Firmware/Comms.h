@@ -13,6 +13,7 @@ void wifiEnable();
 void wifiDisable();
 
 // MQTT
+char* mqttServer();
 bool mqttConnected();
 
 // All these functions treat TOPIC_Name as template and complete it with MQTT_Root, mqttClientId and optional variables (if passed)

@@ -28,7 +28,7 @@ mqttMdnsRecord mqttMdns[mqttMdnsSize];
 // Number of connection attempts before resetting controller
 #define COMMS_ConnectAttempts 1000000
 // Time to wait between RSSI reports
-#define COMMS_RSSITimeout ((unsigned long)(10 * 1000))
+#define COMMS_RSSITimeout ((unsigned long)(60 * 1000))
 
 #define MQTT_ActivityTimeout ((unsigned long)(10 * 1000))
 #define MQTT_CbsSize 10
@@ -45,6 +45,7 @@ static char* TOPIC_Address PROGMEM = "Address";
 static char* TOPIC_RSSI PROGMEM = "RSSI";
 static char* TOPIC_Activity PROGMEM = "Activity";
 static char* TOPIC_Reset PROGMEM = "Reset";
+static char* TOPIC_FactoryReset PROGMEM = "FactoryReset";
 static char* TOPIC_EnableOTA PROGMEM = "EnableOTA";
 #ifndef WIFI_HostName
 static char* TOPIC_SetName PROGMEM = "SetName";
@@ -74,7 +75,6 @@ struct CommsConfig {
 unsigned long commsConnecting;
 unsigned long commsConnectAttempt = 0;
 unsigned long commsPaused;
-unsigned long commsRssiReported;
 unsigned long commsPauseTimeout = COMMS_ConnectTimeout;
 
 int mqttMdnsIndex = 0;
@@ -86,6 +86,7 @@ unsigned int otaProgress;
 
 unsigned long mqttActivity;
 bool mqttDisableCallback = false;
+char mqttServerAddress[32]="";
 
 WiFiClient wifiClient;
 PubSubClient mqttClient( wifiClient );
@@ -179,6 +180,9 @@ void commsReconnect() {
 //**************************************************************************
 bool mqttConnected() {
   return mqttClient.connected();
+}
+char* mqttServer() {
+  return mqttServerAddress;
 }
 char* mqttTopic( char* buffer, char* TOPIC_Name ) {
   return mqttTopic( buffer, TOPIC_Name, NULL, NULL );
@@ -279,7 +283,6 @@ void mqttRegisterCallbacks( MQTT_CALLBACK, MQTT_CONNECT ) {
   mqttCbsCount++;
 }
 
-
 // Internal proxy function to process "default" topics
 void mqttCallbackProxy(char* topic, byte* payload, unsigned int length) {
   if( mqttDisableCallback ) return;
@@ -293,6 +296,10 @@ void mqttCallbackProxy(char* topic, byte* payload, unsigned int length) {
   if( mqttIsTopic( topic, TOPIC_Reset ) ) {
     aePrintln(F("MQTT: Resetting by request"));
     commsClearTopicAndRestart( TOPIC_Reset );
+  } else if( mqttIsTopic( topic, TOPIC_FactoryReset ) ) {
+    aePrintln(F("MQTT: Resetting settings"));
+    storageReset();
+    commsClearTopicAndRestart( TOPIC_FactoryReset );
 
 #ifndef WIFI_HostName
   } else if( mqttIsTopic( topic, TOPIC_SetName ) ) {
@@ -341,7 +348,7 @@ void commsLoop() {
       commsConnecting = 0;
       aePrint(F("WIFI: Connected as ")); aePrint( WiFi.hostname() ); aePrint(F("/")); aePrintln( WiFi.localIP() );
       if( !MDNS.begin(commsConfig.hostName) ) {
-        aePrintln(F("WIFI: MDNS.begin() failed"));
+        aePrintln(F("MDNQ: begin() failed"));
       }
       return; // Split activity to not overload loop
     }
@@ -372,7 +379,7 @@ void commsLoop() {
             aePrintln(F("\nOTA: Firmware updated. Restarting"));
           });
           ArduinoOTA.onError([](ota_error_t error) {
-            aePrintln(F("OTA: Error updating firmware. Restarting\r"));
+            aePrint(F("OTA: Error #")); aePrint( error ); aePrintln(F(" updating firmware. Restarting"));
             commsRestart();
           });      
           ArduinoOTA.begin();
@@ -397,10 +404,21 @@ void commsLoop() {
         activityReported = a;
       }
 
-      if( (unsigned long)(t - commsRssiReported) > COMMS_RSSITimeout ) {
-        char s[16];
-        sprintf(s, "%d",(int)WiFi.RSSI());
-        if( mqttPublish( TOPIC_RSSI, s, false ) ) commsRssiReported = t;
+      static unsigned long _rssiReported = 0;
+
+      if( (unsigned long)(t - _rssiReported) > ((unsigned long)5000) ) {
+        static int32_t _rssi = 9999;
+        int32_t rssi = WiFi.RSSI();
+        int d = ((int)(rssi-_rssi));
+        if( d<0 ) d = -d;
+        if( (((unsigned long)(t - _rssiReported) > COMMS_RSSITimeout) && (d>5)) || (d>20) ) {
+          char s[16];
+          sprintf(s, "%d",rssi);
+          if( mqttPublish( TOPIC_RSSI, s, false ) ) {
+            _rssiReported = t;
+            _rssi = rssi;
+          }
+        }
       }
 
 
@@ -425,11 +443,12 @@ void commsLoop() {
             mqttMdns[i].port = MDNS.port(i);
           }
         }
-        aePrintf("MQTT: %d broker(s) announced\n", mqttMdnsCnt );
+        aePrintf("MQTT: %d answer(s)received\n", mqttMdnsCnt );
 
         if( mqttMdnsCnt>0 ) {
           aePrintf("MQTT: Connecting broker #%d %s:%d\r\n", mqttMdnsIndex, mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );
           mqttClient.setServer( mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );
+          strcpy( mqttServerAddress, mqttMdns[mqttMdnsIndex].address );
           mqttMdnsIndex++;
           if( mqttMdnsIndex>=mqttMdnsCnt ) {
             mqttMdnsCnt = 0;
@@ -440,6 +459,7 @@ void commsLoop() {
         }
 #else
         mqttClient.setServer( MQTT_Address, MQTT_Port);
+        strcpy( mqttServerAddress, MQTT_Address );
 #endif
 
         mqttClient.setCallback( mqttCallbackProxy );
@@ -454,6 +474,7 @@ void commsLoop() {
           aePrintln(F("MQTT: Connected"));
           // Subscribe
           mqttSubscribeTopic( TOPIC_Reset );
+          mqttSubscribeTopic( TOPIC_FactoryReset );
           mqttSubscribeTopic( TOPIC_EnableOTA );
 #ifndef WIFI_HostName
           mqttSubscribeTopic( TOPIC_SetName );
@@ -509,7 +530,7 @@ void commsEnableOTA() {
     otaShouldInit = true;
   }
   otaEnabled = millis();
-  Serial.end();
+  //Serial.end();
 }
 
 void commsRestart() {
@@ -538,7 +559,6 @@ void commsInit() {
   commsPaused = 0;
   mqttActivity = 0;
   storageRegisterBlock( COMMS_StorageId, &commsConfig, sizeof(commsConfig) );
-
 #ifdef WIFI_HostName
   uint8_t macAddr[6];
   char macS[16];
