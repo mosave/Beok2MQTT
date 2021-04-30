@@ -340,6 +340,10 @@ void mqttCallbackProxy(char* topic, byte* payload, unsigned int length) {
 void commsLoop() {
 
   if( commsConfig.disabled ) return;
+
+  static bool wasConnected = false;
+  static unsigned long onlineReported = 0;
+  static unsigned long rssiReported = 0;
   
   unsigned long t = millis();
   // Check if connection is not timed out
@@ -367,14 +371,6 @@ void commsLoop() {
             storageSave();
             LittleFS.end();
           });
-          ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-//            aePrint(F("."));
-//            otaProgress++;
-//            if(otaProgress>=100) {
-//              otaProgress = 0; 
-//              aePrintln();
-//            }
-          });
           ArduinoOTA.onEnd([]() {
             aePrintln(F("\nOTA: Firmware updated. Restarting"));
           });
@@ -393,7 +389,6 @@ void commsLoop() {
         commsRestart();
       }
     }
-    static bool wasConnected = false;
     
     // Handle MQTT connection and loops
     if( mqttClient.loop() ) {
@@ -404,21 +399,25 @@ void commsLoop() {
         activityReported = a;
       }
 
-      static unsigned long _rssiReported = 0;
-
-      if( (unsigned long)(t - _rssiReported) > ((unsigned long)5000) ) {
+      if( (unsigned long)(t - rssiReported) > ((unsigned long)5000) ) {
         static int32_t _rssi = 9999;
         int32_t rssi = WiFi.RSSI();
         int d = ((int)(rssi-_rssi));
         if( d<0 ) d = -d;
-        if( (((unsigned long)(t - _rssiReported) > COMMS_RSSITimeout) && (d>5)) || (d>20) ) {
+        if( (((unsigned long)(t - rssiReported) > COMMS_RSSITimeout) && (d>5)) || (d>20) ) {
           char s[16];
           sprintf(s, "%d",rssi);
           if( mqttPublish( TOPIC_RSSI, s, false ) ) {
-            _rssiReported = t;
+            rssiReported = t;
             _rssi = rssi;
           }
         }
+      }
+
+      // Report online status every 10 minutes
+      if( (unsigned long)(t - onlineReported) > ((unsigned long)600000) ) {
+        onlineReported = t;
+        mqttPublish( TOPIC_Online, (long)1, true );
       }
 
 
@@ -484,6 +483,7 @@ void commsLoop() {
           mqttSubscribeTopic( TOPIC_SetRoot );
 #endif  
           mqttPublish( TOPIC_Online, (long)1, true );
+          onlineReported = t;
 #ifdef VERSION
           mqttPublish( TOPIC_Version, VERSION, true  );
 #endif

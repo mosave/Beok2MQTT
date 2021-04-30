@@ -5,6 +5,14 @@
 #include "Comms.h"
 
 #pragma region Constants
+#ifdef TIMEZONE
+  #include "TZ.h"
+  #include <time.h>
+  static char* NTP_SERVER1 PROGMEM = "time.google.com";
+  static char* NTP_SERVER2 PROGMEM = "time.nist.gov";
+#endif
+
+
 static char* TOPIC_Locked PROGMEM = "Locked";
 static char* TOPIC_On PROGMEM = "Power";
 static char* TOPIC_Heating PROGMEM = "Heating";
@@ -206,29 +214,6 @@ bool thermProcessMessage() {
     thermState.minutes =  thermData[20];
     thermState.seconds =  thermData[21];
     thermState.weekday =  thermData[22];
-
-    // //*** Thermostat time validation
-    // $timeH = (int)date("G", time());
-    // $timeM = (int)date("i", time());
-    // $timeS = (int)date("s", time());
-    // $timeD = (int)date("N", time());
-
-    //                               // Get current time in week seconds
-    // $timeCurrent = ( (($timeD-1)*24 + $timeH) * 60 + $timeM ) * 60 + $timeS;
-
-    //                               // Get thermostat time in week seconds
-    // $timeTherm = ( (($data['weekday']-1)*24 + $data['hour']) * 60 + $data['min'] ) * 60 + $payload[21];
-
-    // // Delta time, seconds
-    // $timeDelta = abs( $timeCurrent - $timeTherm);
-
-    // // Compensate overflow with 1 minute confidence
-    // if( $timeDelta >= 7*24*60*60 - 60 ) $timeDelta = abs(7*24*60*60 - $timeDelta);
-
-    // // Check if thermostat time differs more than 30seconds
-    // if ( $timeDelta > 30 ) {
-    //   self::set_time($timeH,$timeM,$timeS,$timeD);
-    // }
 
     // If status packet have schedule data
     if( thermDataLen > 46 ) {
@@ -620,8 +605,43 @@ void thermLoop() {
     lastMaintenance = t;
   }
 
+#ifdef TIMEZONE
+  if( wifiConnected() ) {
+    static char _mqttServer[31] = "-";
+    if( strcmp( _mqttServer, mqttServer() ) != 0 ) {
+      strcpy( _mqttServer, mqttServer());
+      if( strlen(_mqttServer)>0 ) {
+        configTime( TIMEZONE, _mqttServer, NTP_SERVER1, NTP_SERVER2 );
+      } else {
+        configTime( TIMEZONE, NTP_SERVER1, NTP_SERVER2 );
+      }
+      tzset();
+    }
+  }
+#endif  
+
   // Periodical maintenance tasks
   if( (unsigned long)(t - lastMaintenance) > (unsigned long)500 ) {
+    //*** Thermostat time validation
+    time_t currentTime = time(nullptr);
+
+    if( mqttConnected() && (currentTime > 10000) ) {
+      tm* lt = localtime( &currentTime );
+      unsigned long tc =  ((( lt->tm_wday * 24 ) + lt->tm_hour) * 60 + lt->tm_min) * 60 + lt->tm_sec;
+      unsigned long tt = ((( thermState.weekday * 24 ) + thermState.hours) * 60 + thermState.minutes) * 60 + thermState.seconds;
+      // If more than 20 seconds difference:
+      if( abs(tc - tt ) > 20 ) {
+          thermActivityLocked = millis();
+          thermState.hours = lt->tm_hour;
+          thermState.minutes = lt->tm_min;
+          thermState.seconds = lt->tm_sec;
+          thermState.weekday = lt->tm_wday;
+          char s[31];
+          sprintf(s, "01100008000204%02x%02x%02x%02x", thermState.hours, thermState.minutes, thermState.seconds, thermState.weekday );
+          thermSendMessage( s );
+      }
+    }
+
     // Get MCU status every few seconds
     if( (unsigned long)(t - thermLastStatus) > (unsigned long)5000 ) {
       thermSendMessage( "010300000016");
@@ -645,10 +665,16 @@ void thermLoop() {
 }
 
 void thermInit() {
+
+#ifdef TIMEZONE
+   configTime( TIMEZONE, NTP_SERVER1, NTP_SERVER2 );
+   tzset();
+#endif  
   thermActivityLocked = millis();
 	therm.begin(9600);
   mqttRegisterCallbacks( thermCallback, thermConnect );
 	registerLoop(thermLoop);
+
 }
 
 #pragma endregion

@@ -27,6 +27,9 @@
 // Define this to use external THU21D based sensor (temperature & humidity)
 //#define USE_HTU21D
 
+// Define this to autosynchronize time if NTP server is available.
+// Check "tz.h" for timezone constants
+#define TIMEZONE TZ_Europe_Moscow
 
 #ifndef WIFI_SSID
     #include "Config.AE.h"
@@ -53,6 +56,7 @@
   #define SDA_Pin 0
   #define SCL_Pin 2
 #endif
+
 
 #define LOOP std::function<void()>
 
