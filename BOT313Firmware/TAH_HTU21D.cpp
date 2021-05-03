@@ -9,6 +9,7 @@ static char* TOPIC_TAHValid PROGMEM = "Sensors/TAHValid";
 static char* TOPIC_Temperature PROGMEM = "Sensors/Temperature";
 static char* TOPIC_Humidity PROGMEM = "Sensors/Humidity";
 static char* TOPIC_HeatIndex PROGMEM = "Sensors/HeatIndex";
+static char* TOPIC_AbsHumidity PROGMEM = "Sensors/AbsHumidity";
 
 #define ValidityTimeout ((unsigned long)(30*1000))
 
@@ -51,6 +52,9 @@ float tahHeatIndex() {
   }
   return (hi - 32.0) / 1.8;
 }
+float tahAbsHumidity(){
+  return 6.112*pow(2.71828,(17.67*tahTemperature)/(tahTemperature+243.5))*tahHumidity*2.1674/(275.15+tahTemperature);
+}
 
 void tahPublishStatus() {
   if( !mqttConnected() ) return;
@@ -87,6 +91,8 @@ void tahPublishStatus() {
   if( hindex ) {
     dtostrf( ((float)((int)(tahHeatIndex()*2)))/2.0, 0, 1, b );
     mqttPublish( TOPIC_HeatIndex, b, true );
+    dtostrf( ((float)((int)(tahAbsHumidity()*2)))/2.0, 0, 1, b );
+    mqttPublish( TOPIC_AbsHumidity, b, true );
   }
 }
 
