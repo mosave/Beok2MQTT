@@ -3,7 +3,11 @@
 #include "Config.h"
 #include "Thermostat.h"
 #include "Comms.h"
+#include "Storage.h"
 
+#ifdef USE_HTU21D
+  #include "TAH_HTU21D.h"
+#endif
 #pragma region Constants
 #ifdef TIMEZONE
   #include "TZ.h"
@@ -30,6 +34,12 @@ static char* TOPIC_LoopMode PROGMEM = "LoopMode";
 static char* TOPIC_Sensor PROGMEM = "Sensor";
 static char* TOPIC_Hysteresis PROGMEM = "Hysteresis";
 static char* TOPIC_AdjTemp PROGMEM = "AdjTemp";
+static char* TOPIC_SetAdjTemp PROGMEM = "SetAdjTemp";
+
+#ifdef USE_HTU21D
+static char* TOPIC_AutoAdjMode PROGMEM = "AutoAdjMode";
+static char* TOPIC_SetAutoAdjMode PROGMEM = "SetAutoAdjMode";
+#endif
 static char* TOPIC_AntiFroze PROGMEM = "AntiFroze";
 static char* TOPIC_PowerOnMemory PROGMEM = "PowerOnMemory";
 static char* TOPIC_Weekday PROGMEM = "Weekday";
@@ -59,12 +69,15 @@ enum ThermWiFiState {
   On
 };
 
+ThermConfig thermConfig;
+
 char thermData[128];
 int thermDataLen = 0;
 // Current thermostat state
 ThermState thermState;
 // Published thermostat state
 ThermState _thermState;
+unsigned long thermLastStatusRequest = 0;
 unsigned long thermLastStatus = 0;
 unsigned long thermLastPublished = 0;
 unsigned long thermActivityLocked = 0;
@@ -130,6 +143,28 @@ void thermSendMessage( const char* data) {
   thermSendMessage( data, true );
 }
 
+void thermSendAdvancedParams() {
+  char data[64];
+  int16_t a = (int16_t)(thermState.adjTemp*2.0);
+  
+//  sprintf(data, "%d %02x %02x ", (int16_t)(thermState.adjTemp*2.0), (a>>8) & 0xFF, a & 0xFF  );
+//  mqttPublish("Log",data,false);
+  
+  sprintf( data, "0110000200050a %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+    thermState.loopMode,
+    thermState.sensor,
+    (int)thermState.floorTempMax,
+    (int)(thermState.hysteresis*2.0),
+    (int)thermState.targetTempMax,
+    (int)thermState.targetTempMin,
+    (a>>8) & 0xFF, a & 0xFF,
+    thermState.antiFroze ? 1 : 0,
+    thermState.powerOnMemory ? 1 : 0
+  );
+//  mqttPublish("Log",data,false);
+  thermSendMessage(data);
+}
+
 // 0: off
 // 1: fast blink
 // 2: slow blink
@@ -183,10 +218,12 @@ bool thermProcessMessage() {
   if( (thermDataLen > 22) // have at least 23 bytes
       && (thermData[0]==0x01) && (thermData[1]==0x03) // signature is for "Status" packet type
       && (thermData[11]>thermData[12]) // temperature range is valid
-      && (thermData[22]>0) && (thermData[22]<8) // Week day is in range
-      && (thermData[19]<24) && (thermData[20]<60) // Hours and minutes are in range
+      //&& (thermData[22]>0) && (thermData[22]<8) // Week day is in range
+      //&& (thermData[19]<24) && (thermData[20]<60) // Hours and minutes are in range
     ) {
+      
     thermLastStatus = millis();
+    thermLastStatusRequest = thermLastStatus;
 
     thermState.locked = thermData[3] & 1;
     thermState.on = thermData[4] & 1;
@@ -206,7 +243,9 @@ bool thermProcessMessage() {
     thermState.loopMode =  (thermData[7] >> 4) & 0x0F;
     thermState.sensor = thermData[8];
     thermState.hysteresis = thermData[10] / 2.0;
+    
     thermState.adjTemp = ((int16_t)((thermData[13] << 8) + thermData[14]))/2.0;
+    
     thermState.antiFroze = (thermData[15] & 1);
     thermState.powerOnMemory = (thermData[16] & 1);
 
@@ -229,6 +268,23 @@ bool thermProcessMessage() {
         }
       }
     }
+#ifdef USE_HTU21D    
+    if( (thermState.sensor==0) && thermConfig.autoAdjMode ) {
+      float t = 0;
+      if( thermConfig.autoAdjMode==1 ) {
+        t = tahGetTemperature();
+      } else if( thermConfig.autoAdjMode==2 ) {
+        t = tahGetHeatIndex();
+      }
+      float delta = thermState.roomTemp-t;
+      if( delta <0 ) delta = -delta;
+      if( (t != 0) && (delta>0.75) ) {
+        delta = t - (thermState.roomTemp - thermState.adjTemp);
+        thermState.adjTemp = (float)((int)(delta * 2)) / 2.0;
+        thermSendAdvancedParams();
+      }
+    }
+#endif
     return true;
   }
   return false;
@@ -323,6 +379,11 @@ void thermConnect() {
   mqttSubscribeTopic( TOPIC_SetTime );
   mqttSubscribeTopic( TOPIC_SetWeekday );
   mqttSubscribeTopic( TOPIC_SetSensor );
+  mqttSubscribeTopic( TOPIC_SetAdjTemp );
+  
+#ifdef USE_HTU21D
+  mqttSubscribeTopic( TOPIC_SetAutoAdjMode );
+#endif
   thermActivityLocked = millis();
 }
 
@@ -346,6 +407,20 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       mqttPublish(TOPIC_SetTargetTemp,(char*)NULL, false);
     }
     return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetAdjTemp ) ) {
+    if( (payload != NULL) && (length > 0) && (length<31) ) {
+      char s[31];
+      memset( s, 0, sizeof(s) );
+      strncpy( s, ((char*)payload), length );
+      errno = 0;
+      float adjTemp = ((int)(strtof(s,NULL) * 2)) / 2.0 ;
+      if ( (errno == 0) && (adjTemp>=-10) && (adjTemp<=10) ) {
+        thermState.adjTemp = adjTemp;
+        thermSendAdvancedParams();
+      }
+      mqttPublish(TOPIC_SetAdjTemp,(char*)NULL, false);
+    }
+    return true;
   } else if( mqttIsTopic( topic, TOPIC_SetOn ) ) {
     if( (payload != NULL) && (length==1) ) {
       char v = ( (char)*payload =='1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
@@ -353,7 +428,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermActivityLocked = millis();
         thermState.on = (bool)v;
         char s[31];
-        sprintf(s, "01060000%02x%02x", thermState.locked, v );
+        sprintf(s, "01060000%02x%02x", thermState.locked?1:0, v );
         thermSendMessage( s );
       }
       mqttPublish(TOPIC_SetOn,(char*)NULL, false);
@@ -366,7 +441,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermActivityLocked = millis();
         thermState.locked = (bool)v;
         char s[31];
-        sprintf(s, "01060000%02x%02x", v, thermState.on );
+        sprintf(s, "01060000%02x%02x", v, thermState.on?1:0 );
         thermSendMessage( s );
       }
       mqttPublish(TOPIC_SetLocked,(char*)NULL, false);
@@ -475,9 +550,22 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       mqttPublish(TOPIC_SetTime,(char*)NULL, false);
     }
     return true;
+#ifdef USE_HTU21D
+  } else if( mqttIsTopic( topic, TOPIC_SetAutoAdjMode ) ) {
+    if( (payload != NULL) && (length==1) && (thermState.sensor == 0) ) {
+      int m = ( (char)(*payload) - '1' + 1 );
+      if ( (errno == 0) && (m>=0) && (m<=2) ) {
+        thermActivityLocked = millis();
+        thermConfig.autoAdjMode = m;
+        storageSave();
+      }
+      mqttPublish(TOPIC_SetAutoAdjMode,(char*)NULL, false);
+    }
+    return true;
+#endif    
   } else if( mqttIsTopic( topic, "EnableOTA" ) ) {
+    thermSetWiFiSign( ThermWiFiState::BlinkFast );
     thermDisabled = true;
-    thermSetWiFiSign(ThermWiFiState::Blink );
     delay(100);
     commsEnableOTA();
     return true;
@@ -525,8 +613,7 @@ bool thermPublish( char* topic, int value, int* _value, bool retained, bool acti
 void thermPublish() {
     unsigned long t = millis();
     // To avoid MQTT spam
-    if( (thermLastStatus==0) || (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
-
+    if( (thermLastStatus == 0) || (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
     char s[128];
     char s1[128];
 
@@ -574,6 +661,16 @@ void thermPublish() {
         thermLastPublished = millis();
       }
     }
+
+#ifdef USE_HTU21D
+    static int _autoAdjMode = 99;
+    if( _autoAdjMode != thermConfig.autoAdjMode ) {
+      if( mqttPublish( TOPIC_AutoAdjMode, thermConfig.autoAdjMode, true)) {
+        _autoAdjMode = thermConfig.autoAdjMode;
+        thermLastPublished = millis();
+      }
+    }
+#endif
 
 }
 #pragma endregion
@@ -627,7 +724,9 @@ void thermLoop() {
 
     if( mqttConnected() && (currentTime > 10000) ) {
       tm* lt = localtime( &currentTime );
-      unsigned long tc =  ((( lt->tm_wday * 24 ) + lt->tm_hour) * 60 + lt->tm_min) * 60 + lt->tm_sec;
+      int weekday = (lt->tm_wday>0) ? lt->tm_wday : 7;
+      
+      unsigned long tc =  ((( weekday * 24 ) + lt->tm_hour) * 60 + lt->tm_min) * 60 + lt->tm_sec;
       unsigned long tt = ((( thermState.weekday * 24 ) + thermState.hours) * 60 + thermState.minutes) * 60 + thermState.seconds;
       // If more than 20 seconds difference:
       if( abs(tc - tt ) > 20 ) {
@@ -635,7 +734,7 @@ void thermLoop() {
           thermState.hours = lt->tm_hour;
           thermState.minutes = lt->tm_min;
           thermState.seconds = lt->tm_sec;
-          thermState.weekday = lt->tm_wday;
+          thermState.weekday = weekday;
           char s[31];
           sprintf(s, "01100008000204%02x%02x%02x%02x", thermState.hours, thermState.minutes, thermState.seconds, thermState.weekday );
           thermSendMessage( s );
@@ -643,8 +742,9 @@ void thermLoop() {
     }
 
     // Get MCU status every few seconds
-    if( (unsigned long)(t - thermLastStatus) > (unsigned long)5000 ) {
+    if( (unsigned long)(t - thermLastStatusRequest) > (unsigned long)4000 ) {
       thermSendMessage( "010300000016");
+      thermLastStatusRequest = t;
     } else {
       static char _wifiState = 99;
       ThermWiFiState wifiState = 
@@ -670,6 +770,7 @@ void thermInit() {
    configTime( TIMEZONE, NTP_SERVER1, NTP_SERVER2 );
    tzset();
 #endif  
+  storageRegisterBlock('T', &thermConfig, sizeof(thermConfig));
   thermActivityLocked = millis();
 	therm.begin(9600);
   mqttRegisterCallbacks( thermCallback, thermConnect );

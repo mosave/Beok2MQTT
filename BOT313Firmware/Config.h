@@ -6,8 +6,10 @@
 #define MQTT_MAX_PACKET_SIZE 512
 #define mqtt_max_packet_size 512
 
-// Define this to enable SendCommand topic and extra debug output
+// Define this to enable extra debug output & Log topic
 //#define THERM_DEBUG
+// Define this to enable SendCommand topic
+//#define THERM_SEND_COMMAND
 
 #define LED_Pin 2
 

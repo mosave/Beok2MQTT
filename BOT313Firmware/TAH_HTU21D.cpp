@@ -26,7 +26,7 @@ bool tahAvailable() {
 
 //float toFahrenheit(float temp) { return 1.8 * temp + 32.0; };
 //float toCelsius(float temp) { return (temp - 32.0) / 1.8; };
-  
+
 float tahHeatIndex() {
   float hi;
   // to farenheit
@@ -54,6 +54,19 @@ float tahHeatIndex() {
 }
 float tahAbsHumidity(){
   return 6.112*pow(2.71828,(17.67*tahTemperature)/(tahTemperature+243.5))*tahHumidity*2.1674/(275.15+tahTemperature);
+}
+
+float tahGetTemperature(){
+  return tahTemperature;
+}
+float tahGetHumidity() {
+  return tahHumidity;
+}
+float tahGetHeatIndex() {
+  return tahHeatIndex();
+}
+float tahGetAbsHumidity() {
+  return tahAbsHumidity();
 }
 
 void tahPublishStatus() {

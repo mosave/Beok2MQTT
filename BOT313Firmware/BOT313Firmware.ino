@@ -23,7 +23,7 @@ static char* TOPIC_SendCommand PROGMEM = "SendCommand";
 // MQTT support
 //*****************************************************************************************
 void mqttConnect() {
-#ifdef THERM_DEBUG  
+#ifdef THERM_SEND_COMMAND  
   mqttSubscribeTopic( TOPIC_SendCommand );
 #endif
 }
@@ -34,7 +34,7 @@ bool mqttCallback(char* topic, byte* payload, unsigned int length) {
   //print("Payload=");
   //if( payload != NULL ) { println( (char*)payload ); } else { println( "empty" );}
   
-#ifdef THERM_DEBUG  
+#ifdef THERM_SEND_COMMAND
   if( mqttIsTopic( topic, TOPIC_SendCommand ) ) {
     if( (payload != NULL) && (length > 0) && (length<250) ) {
       char b[255];

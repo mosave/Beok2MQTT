@@ -1,6 +1,12 @@
 #ifndef thermostat_h
 #define thermostat_h
 
+struct ThermConfig {
+    int autoAdjMode = 0;
+};
+
+extern ThermConfig thermConfig;
+
 struct ThermScheduleRecord {
     int8 h;
     int8 m;
