@@ -1,6 +1,10 @@
 #ifndef comms_h
 #define comms_h
 
+#ifndef std::function
+#include <functional>
+#endif
+
 #define MQTT_CALLBACK std::function<bool(char*, uint8_t*, unsigned int)> callback
 #define MQTT_CONNECT std::function<void()> connect
 
@@ -50,8 +54,15 @@ void triggerActivity();
 void mqttRegisterCallbacks( MQTT_CALLBACK, MQTT_CONNECT );
 
 bool commsOTAEnabled();
-
 void commsEnableOTA();
+
+// Be sure TIMEZONE is defined in config.h for time functions to work
+// TRUE if local time is synchronized 
+bool commsTimeIsValid();
+
+// Returns pointer to structure containing local time or NULL if local time is not yet synchronized.
+tm* commsGetTime();
+
 void commsRestart();
 void commsClearTopicAndRestart( char* topic );
 void commsClearTopicAndRestart( char* topic, char* topicVar1 );

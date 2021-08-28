@@ -9,11 +9,9 @@
   #include "TAH_HTU21D.h"
 #endif
 #pragma region Constants
+
 #ifdef TIMEZONE
-  #include "TZ.h"
   #include <time.h>
-  static char* NTP_SERVER1 PROGMEM = "time.google.com";
-  static char* NTP_SERVER2 PROGMEM = "time.nist.gov";
 #endif
 
 
@@ -581,7 +579,7 @@ void thermTriggerActivity() {
   }
 }
 
-bool thermPublish( char* topic, float value, float* _value, bool retained, bool activity ) {
+void thermPublish( char* topic, float value, float* _value, bool retained, bool activity ) {
   if( (value != *_value ) ) {
     char s[8];
     dtostrf( value, 4,1, s );
@@ -594,15 +592,15 @@ bool thermPublish( char* topic, float value, float* _value, bool retained, bool 
     }
   }
 }
-bool thermPublish( char* topic, bool value, bool* _value, bool retained, bool activity ) {
-  if( ((int)value != (int)(*_value) ) && mqttPublish( topic, value, retained) ) {
+void thermPublish( char* topic, bool value, bool* _value, bool retained, bool activity ) {
+  if( ((int)value != (int)(*_value) ) && mqttPublish( topic, value?1:0, retained) ) {
     *_value = value;
     thermLastPublished = millis();
     if( activity ) thermTriggerActivity();
   }
 }
 
-bool thermPublish( char* topic, int value, int* _value, bool retained, bool activity ) {
+void thermPublish( char* topic, int value, int* _value, bool retained, bool activity ) {
   if( (value != (*_value) ) && mqttPublish( topic, value, retained) ) {
     *_value = value;
     thermLastPublished = millis();
@@ -616,7 +614,6 @@ void thermPublish() {
     if( (thermLastStatus == 0) || (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
     char s[128];
     char s1[128];
-
     thermPublish( TOPIC_Locked, thermState.locked, &_thermState.locked, true, true );
     thermPublish( TOPIC_On, thermState.on, &_thermState.on, true, true );
     thermPublish( TOPIC_Heating, thermState.heating, &_thermState.heating, true, false );
@@ -702,34 +699,18 @@ void thermLoop() {
     lastMaintenance = t;
   }
 
-#ifdef TIMEZONE
-  if( wifiConnected() ) {
-    static char _mqttServer[31] = "-";
-    if( strcmp( _mqttServer, mqttServer() ) != 0 ) {
-      strcpy( _mqttServer, mqttServer());
-      if( strlen(_mqttServer)>0 ) {
-        configTime( TIMEZONE, _mqttServer, NTP_SERVER1, NTP_SERVER2 );
-      } else {
-        configTime( TIMEZONE, NTP_SERVER1, NTP_SERVER2 );
-      }
-      tzset();
-    }
-  }
-#endif  
-
   // Periodical maintenance tasks
   if( (unsigned long)(t - lastMaintenance) > (unsigned long)500 ) {
     //*** Thermostat time validation
-    time_t currentTime = time(nullptr);
-
-    if( mqttConnected() && (currentTime > 10000) ) {
-      tm* lt = localtime( &currentTime );
+    tm* lt = commsGetTime();
+    
+    if( mqttConnected() && (lt!=NULL) ) {
       int weekday = (lt->tm_wday>0) ? lt->tm_wday : 7;
       
       unsigned long tc =  ((( weekday * 24 ) + lt->tm_hour) * 60 + lt->tm_min) * 60 + lt->tm_sec;
       unsigned long tt = ((( thermState.weekday * 24 ) + thermState.hours) * 60 + thermState.minutes) * 60 + thermState.seconds;
       // If more than 20 seconds difference:
-      if( abs(tc - tt ) > 20 ) {
+      if( ((tc<tt)?(tt-tc):(tc-tt)) > 20 ) {
           thermActivityLocked = millis();
           thermState.hours = lt->tm_hour;
           thermState.minutes = lt->tm_min;
@@ -765,17 +746,11 @@ void thermLoop() {
 }
 
 void thermInit() {
-
-#ifdef TIMEZONE
-   configTime( TIMEZONE, NTP_SERVER1, NTP_SERVER2 );
-   tzset();
-#endif  
   storageRegisterBlock('T', &thermConfig, sizeof(thermConfig));
   thermActivityLocked = millis();
-	therm.begin(9600);
+  therm.begin(9600);
   mqttRegisterCallbacks( thermCallback, thermConnect );
-	registerLoop(thermLoop);
-
+  registerLoop(thermLoop);
 }
 
 #pragma endregion

@@ -1,8 +1,13 @@
+#ifdef ESP8266
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <LittleFS.h>
+#else
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#endif
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
-#include <LittleFS.h>
 #include "Config.h"
 #include "Comms.h"
 #include "Storage.h"
@@ -13,12 +18,20 @@
   #define MQTT_MDNS
   #define mqttMdnsSize 4
 
-struct mqttMdnsRecord {
-  char address[16];
-  uint16 port;
-};
-mqttMdnsRecord mqttMdns[mqttMdnsSize];
+  struct mqttMdnsRecord {
+    char address[16];
+    uint16_t port;
+  };
+  mqttMdnsRecord mqttMdns[mqttMdnsSize];
 #endif
+
+#ifdef TIMEZONE
+  #include "TZ.h"
+  #include <time.h>
+  static char* NTP_SERVER1 PROGMEM = "time.google.com";
+  static char* NTP_SERVER2 PROGMEM = "time.nist.gov";
+#endif
+
 
 //#define Debug
 
@@ -350,10 +363,17 @@ void commsLoop() {
   if (WiFi.status() == WL_CONNECTED) {  // WiFi is already connected
     if( commsConnecting >0 ) {
       commsConnecting = 0;
-      aePrint(F("WIFI: Connected as ")); aePrint( WiFi.hostname() ); aePrint(F("/")); aePrintln( WiFi.localIP() );
+      aePrint(F("WIFI: Connected as ")); 
+#ifdef ESP8266
+      aePrint( WiFi.hostname() ); 
+#else
+      aePrint(WiFi.getHostname());
+#endif
+      aePrint(F("/")); aePrintln( WiFi.localIP() );
       if( !MDNS.begin(commsConfig.hostName) ) {
         aePrintln(F("MDNQ: begin() failed"));
       }
+
       return; // Split activity to not overload loop
     }
 
@@ -369,7 +389,9 @@ void commsLoop() {
             mqttPublish( TOPIC_Online, (long)0, true );
 //            aePrintln(F("OTA: Updating firmware"));
             storageSave();
+#ifdef LittleFS
             LittleFS.end();
+#endif
           });
           ArduinoOTA.onEnd([]() {
             aePrintln(F("\nOTA: Firmware updated. Restarting"));
@@ -471,6 +493,12 @@ void commsLoop() {
         if( tryConnect && mqttClient.connect( commsConfig.hostName, willTopic, 0, true, "0" ) ) {
           commsConnectAttempt = 0;
           aePrintln(F("MQTT: Connected"));
+#ifdef TIMEZONE
+          // adjust time zone
+            configTime( TIMEZONE, mqttServerAddress, NTP_SERVER1, NTP_SERVER2 );
+            tzset();
+#endif  
+          
           // Subscribe
           mqttSubscribeTopic( TOPIC_Reset );
           mqttSubscribeTopic( TOPIC_FactoryReset );
@@ -532,6 +560,26 @@ void commsEnableOTA() {
   otaEnabled = millis();
   //Serial.end();
 }
+
+// TRUE if local time is synchronized 
+bool commsTimeIsValid() {
+  return (commsGetTime() != NULL);
+}
+
+// Returns pointer to structure containing local time or NULL if local time is not yet synchronized.
+tm* commsGetTime(){
+#ifdef TIMEZONE
+  time_t currentTime = time(nullptr);
+  if( currentTime > 10000 ) {
+    return localtime(&currentTime);
+  } else {
+    return NULL;
+  }
+#else
+  return NULL;
+#endif  
+}
+
 
 void commsRestart() {
   storageSave();

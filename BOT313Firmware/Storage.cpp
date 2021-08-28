@@ -28,7 +28,7 @@ unsigned long changedOn = 0;
 // Returns byte index in storageSnapshot array or -1 if not found
 void* storageSnapshotFind(char id ) {
   if( (storageSnapshot[0] == 0x41) && (storageSnapshot[1] == 0x45) ) {
-    void* p = storageSnapshot + 2;
+    byte* p = storageSnapshot + 2;
     while( p < (storageSnapshot + STORAGE_Size) ) {
       StorageSnapshotHeader* header = (StorageSnapshotHeader*)p;
       p += sizeof(StorageSnapshotHeader);
@@ -47,7 +47,7 @@ void storageMakeSnapshot(){
   memset( storageSnapshot, 0, STORAGE_Size );
   storageSnapshot[0] = 0x41; storageSnapshot[1] = 0x45;
 
-  void* p = &storageSnapshot[2];
+  byte* p = &storageSnapshot[2];
   for( int i = 0; (i<storageBlockCount) && (p<(storageSnapshot+STORAGE_Size)); i++) {
     StorageSnapshotHeader* header = (StorageSnapshotHeader*)p;
     p+=sizeof(StorageSnapshotHeader);
