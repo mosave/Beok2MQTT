@@ -15,7 +15,7 @@ struct ThermScheduleRecord {
 
 struct ThermState {
     bool locked;
-    bool on;
+    bool power;
     bool heating;
     bool targetSetManually;
 
@@ -25,7 +25,7 @@ struct ThermState {
     float targetTempMin;
 
     float floorTemp;
-    float floorTempMax;
+    int floorTempMax;
 
     bool autoMode;
     int loopMode;

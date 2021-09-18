@@ -1,7 +1,7 @@
-// Tuya module configuration to reflash:
+// ESP-01S module:
 // Board: ESP8266 generic (Chip is ESP8266EX)
 // Crystal is 26MHz
-// Flash size: 1MB
+// Flash size: 1MB, FS:None, OTA:502KB
 // Erase Flash: ALL content
 
 #include <stdarg.h>

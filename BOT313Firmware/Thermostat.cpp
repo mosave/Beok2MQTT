@@ -15,48 +15,38 @@
 #endif
 
 
-static char* TOPIC_Locked PROGMEM = "Locked";
-static char* TOPIC_On PROGMEM = "Power";
+static char* TOPIC_SetLocked PROGMEM = "SetLocked";
+static char* TOPIC_SetPower PROGMEM = "SetPower";
 static char* TOPIC_Heating PROGMEM = "Heating";
 static char* TOPIC_TargetSetManually PROGMEM = "TargetSetManually";
 static char* TOPIC_RoomTemp PROGMEM = "RoomTemp";
 static char* TOPIC_FloorTemp PROGMEM = "FloorTemp";
-static char* TOPIC_FloorTempMax PROGMEM = "FloorTempMax";
-static char* TOPIC_TargetTemp PROGMEM = "TargetTemp";
+static char* TOPIC_SetFloorTempMax PROGMEM = "SetFloorTempMax";
+static char* TOPIC_SetTargetTemp PROGMEM = "SetTargetTemp";
 
 static char* TOPIC_TargetTempMax PROGMEM = "TargetTempMax";
 static char* TOPIC_TargetTempMin PROGMEM = "TargetTempMin";
 
-static char* TOPIC_AutoMode PROGMEM = "AutoMode";
-static char* TOPIC_LoopMode PROGMEM = "LoopMode";
-static char* TOPIC_Sensor PROGMEM = "Sensor";
+static char* TOPIC_SetAutoMode PROGMEM = "SetAutoMode";
+static char* TOPIC_SetLoopMode PROGMEM = "SetLoopMode";
+static char* TOPIC_SetSensor PROGMEM = "SetSensor";
 static char* TOPIC_Hysteresis PROGMEM = "Hysteresis";
-static char* TOPIC_AdjTemp PROGMEM = "AdjTemp";
 static char* TOPIC_SetAdjTemp PROGMEM = "SetAdjTemp";
 
 #ifdef USE_HTU21D
-static char* TOPIC_AutoAdjMode PROGMEM = "AutoAdjMode";
 static char* TOPIC_SetAutoAdjMode PROGMEM = "SetAutoAdjMode";
 #endif
-static char* TOPIC_AntiFroze PROGMEM = "AntiFroze";
+static char* TOPIC_SetAntiFroze PROGMEM = "SetAntiFroze";
 static char* TOPIC_PowerOnMemory PROGMEM = "PowerOnMemory";
-static char* TOPIC_Weekday PROGMEM = "Weekday";
-static char* TOPIC_Time PROGMEM = "Time";
+static char* TOPIC_SetWeekday PROGMEM = "SetWeekday";
+static char* TOPIC_SetTime PROGMEM = "SetTime";
 
-static char* TOPIC_Schedule PROGMEM = "Schedule";
-static char* TOPIC_Schedule2 PROGMEM = "Schedule2";
-
-static char* TOPIC_SetTargetTemp PROGMEM = "SetTargetTemp";
-static char* TOPIC_SetOn PROGMEM = "SetPower";
-static char* TOPIC_SetLocked PROGMEM = "SetLocked";
-static char* TOPIC_SetAutoMode PROGMEM = "SetAutoMode";
-static char* TOPIC_SetSensor PROGMEM = "SetSensor";
-static char* TOPIC_SetLoopMode PROGMEM = "SetLoopMode";
 static char* TOPIC_SetSchedule PROGMEM = "SetSchedule";
 static char* TOPIC_SetSchedule2 PROGMEM = "SetSchedule2";
 
-static char* TOPIC_SetTime PROGMEM = "SetTime";
-static char* TOPIC_SetWeekday PROGMEM = "SetWeekday";
+
+
+#define P3(str) ((char*)(((uint)str)+3))
 #pragma endregion Constants
 
 #pragma region Types and Vars
@@ -144,6 +134,7 @@ void thermSendMessage( const char* data) {
 void thermSendAdvancedParams() {
   char data[64];
   int16_t a = (int16_t)(thermState.adjTemp*2.0);
+  thermActivityLocked = millis();
   
 //  sprintf(data, "%d %02x %02x ", (int16_t)(thermState.adjTemp*2.0), (a>>8) & 0xFF, a & 0xFF  );
 //  mqttPublish("Log",data,false);
@@ -224,7 +215,7 @@ bool thermProcessMessage() {
     thermLastStatusRequest = thermLastStatus;
 
     thermState.locked = thermData[3] & 1;
-    thermState.on = thermData[4] & 1;
+    thermState.power = thermData[4] & 1;
     thermState.heating =  (thermData[4] >> 4) & 1;
     thermState.targetSetManually =  (thermData[4] >> 6) & 1;
 
@@ -368,7 +359,7 @@ void thermParseSchedule( char* payload, unsigned int length, ThermScheduleRecord
 void thermConnect() {
   memset( &_thermState, 0xFF, sizeof(_thermState) );
   mqttSubscribeTopic( TOPIC_SetTargetTemp );
-  mqttSubscribeTopic( TOPIC_SetOn );
+  mqttSubscribeTopic( TOPIC_SetPower );
   mqttSubscribeTopic( TOPIC_SetLocked );
   mqttSubscribeTopic( TOPIC_SetAutoMode );
   mqttSubscribeTopic( TOPIC_SetLoopMode );
@@ -378,6 +369,8 @@ void thermConnect() {
   mqttSubscribeTopic( TOPIC_SetWeekday );
   mqttSubscribeTopic( TOPIC_SetSensor );
   mqttSubscribeTopic( TOPIC_SetAdjTemp );
+  mqttSubscribeTopic( TOPIC_SetAntiFroze );
+  mqttSubscribeTopic( TOPIC_SetFloorTempMax );
   
 #ifdef USE_HTU21D
   mqttSubscribeTopic( TOPIC_SetAutoAdjMode );
@@ -419,17 +412,41 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       mqttPublish(TOPIC_SetAdjTemp,(char*)NULL, false);
     }
     return true;
-  } else if( mqttIsTopic( topic, TOPIC_SetOn ) ) {
+  } else if( mqttIsTopic( topic, TOPIC_SetFloorTempMax ) ) {
+    if( (payload != NULL) && (length > 0) && (length<31) ) {
+      char s[31];
+      memset( s, 0, sizeof(s) );
+      strncpy( s, ((char*)payload), length );
+      errno = 0;
+      int ftMax = (int)strtof(s,NULL);
+      if ( (errno == 0) && (ftMax>=20) && (ftMax<=45) ) {
+        thermState.floorTempMax = ftMax;
+        thermSendAdvancedParams();
+      }
+      mqttPublish(TOPIC_SetFloorTempMax,(char*)NULL, false);
+    }
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetAntiFroze ) ) {
+    if( (payload != NULL) && (length==1) ) {
+      uint8 v = ( (char)*payload == '1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
+      if( (v<99) && (thermState.antiFroze != (bool)(v&1)) ){
+        thermState.antiFroze = (bool)(v&1);
+        thermSendAdvancedParams();
+      }
+      mqttPublish(TOPIC_SetAntiFroze,(char*)NULL, false);
+    }
+    return true;
+  } else if( mqttIsTopic( topic, TOPIC_SetPower ) ) {
     if( (payload != NULL) && (length==1) ) {
       char v = ( (char)*payload =='1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
-      if( (v<99) && (thermState.on != (bool)v) ) {
+      if( (v<99) && (thermState.power != (bool)v) ) {
         thermActivityLocked = millis();
-        thermState.on = (bool)v;
+        thermState.power = (bool)v;
         char s[31];
         sprintf(s, "01060000%02x%02x", thermState.locked?1:0, v );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetOn,(char*)NULL, false);
+      mqttPublish(TOPIC_SetPower,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetLocked ) ) {
@@ -439,7 +456,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermActivityLocked = millis();
         thermState.locked = (bool)v;
         char s[31];
-        sprintf(s, "01060000%02x%02x", v, thermState.on?1:0 );
+        sprintf(s, "01060000%02x%02x", v, thermState.power?1:0 );
         thermSendMessage( s );
       }
       mqttPublish(TOPIC_SetLocked,(char*)NULL, false);
@@ -614,28 +631,28 @@ void thermPublish() {
     if( (thermLastStatus == 0) || (unsigned long)(t - thermLastPublished) < (unsigned long)500 ) return;
     char s[128];
     char s1[128];
-    thermPublish( TOPIC_Locked, thermState.locked, &_thermState.locked, true, true );
-    thermPublish( TOPIC_On, thermState.on, &_thermState.on, true, true );
+    thermPublish( P3(TOPIC_SetLocked), thermState.locked, &_thermState.locked, true, true );
+    thermPublish( P3(TOPIC_SetPower), thermState.power, &_thermState.power, true, true );
     thermPublish( TOPIC_Heating, thermState.heating, &_thermState.heating, true, false );
     thermPublish( TOPIC_TargetSetManually, thermState.targetSetManually, &_thermState.targetSetManually, true, false );
     thermPublish( TOPIC_RoomTemp, thermState.roomTemp, &_thermState.roomTemp, true, false );
-    thermPublish( TOPIC_TargetTemp, thermState.targetTemp, &_thermState.targetTemp, true, true );
+    thermPublish( P3(TOPIC_SetTargetTemp), thermState.targetTemp, &_thermState.targetTemp, true, true );
     thermPublish( TOPIC_TargetTempMax, thermState.targetTempMax, &_thermState.targetTempMax, true, false );
     thermPublish( TOPIC_TargetTempMin, thermState.targetTempMin, &_thermState.targetTempMin, true, false );
     thermPublish( TOPIC_FloorTemp, thermState.floorTemp, &_thermState.floorTemp, true, false );
-    thermPublish( TOPIC_FloorTempMax, thermState.floorTempMax, &_thermState.floorTempMax, true, false );
-    thermPublish( TOPIC_AutoMode, thermState.autoMode, &_thermState.autoMode, true, true );
-    thermPublish( TOPIC_LoopMode, thermState.loopMode, &_thermState.loopMode, true, false );
-    thermPublish( TOPIC_Sensor, thermState.sensor, &_thermState.sensor, true, false );
+    thermPublish( P3(TOPIC_SetFloorTempMax), thermState.floorTempMax, &_thermState.floorTempMax, true, false );
+    thermPublish( P3(TOPIC_SetAutoMode), thermState.autoMode, &_thermState.autoMode, true, true );
+    thermPublish( P3(TOPIC_SetLoopMode), thermState.loopMode, &_thermState.loopMode, true, false );
+    thermPublish( P3(TOPIC_SetSensor), thermState.sensor, &_thermState.sensor, true, false );
     thermPublish( TOPIC_Hysteresis, thermState.hysteresis, &_thermState.hysteresis, true, false );
-    thermPublish( TOPIC_AdjTemp, thermState.adjTemp, &_thermState.adjTemp, true, false );
+    thermPublish( P3(TOPIC_SetAdjTemp), thermState.adjTemp, &_thermState.adjTemp, true, false );
 
-    thermPublish( TOPIC_AntiFroze, thermState.antiFroze, &_thermState.antiFroze, true, false );
+    thermPublish( P3(TOPIC_SetAntiFroze), thermState.antiFroze, &_thermState.antiFroze, true, false );
     thermPublish( TOPIC_PowerOnMemory, thermState.powerOnMemory, &_thermState.powerOnMemory, true, false );
-    thermPublish( TOPIC_Weekday, thermState.weekday, &_thermState.weekday, true, false );
+    thermPublish( P3(TOPIC_SetWeekday), thermState.weekday, &_thermState.weekday, true, false );
     if( (thermState.hours != _thermState.hours) || (thermState.minutes != _thermState.minutes) ) {
       sprintf(s,"%02d:%02d", thermState.hours, thermState.minutes );
-      if( mqttPublish( TOPIC_Time, s, true)) {
+      if( mqttPublish( P3(TOPIC_SetTime), s, true)) {
         _thermState.hours = thermState.hours;
         _thermState.minutes = thermState.minutes;
         thermLastPublished = millis();
@@ -644,7 +661,7 @@ void thermPublish() {
     thermPrintSchedule(s,thermState.schedule, 6);
     thermPrintSchedule(s1,_thermState.schedule, 6);
     if( (strlen(s)>0) && (strcmp(s, s1)!=0) ) {
-      if( mqttPublish( TOPIC_Schedule, s, true)) {
+      if( mqttPublish( P3(TOPIC_SetSchedule), s, true)) {
         memcpy(_thermState.schedule, thermState.schedule, sizeof(_thermState.schedule));
         thermLastPublished = millis();
       }
@@ -653,7 +670,7 @@ void thermPublish() {
     thermPrintSchedule(s,thermState.schedule2, 2);
     thermPrintSchedule(s1,_thermState.schedule2, 2);
     if( (strlen(s)>0) && (strcmp(s, s1)!=0) ) {
-      if( mqttPublish( TOPIC_Schedule2, s, true)) {
+      if( mqttPublish( P3(TOPIC_SetSchedule2), s, true)) {
         memcpy(_thermState.schedule2, thermState.schedule2, sizeof(_thermState.schedule2));
         thermLastPublished = millis();
       }
@@ -662,7 +679,7 @@ void thermPublish() {
 #ifdef USE_HTU21D
     static int _autoAdjMode = 99;
     if( _autoAdjMode != thermConfig.autoAdjMode ) {
-      if( mqttPublish( TOPIC_AutoAdjMode, thermConfig.autoAdjMode, true)) {
+      if( mqttPublish( P3(TOPIC_SetAutoAdjMode), thermConfig.autoAdjMode, true)) {
         _autoAdjMode = thermConfig.autoAdjMode;
         thermLastPublished = millis();
       }
