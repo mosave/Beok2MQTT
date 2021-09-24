@@ -395,7 +395,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
           thermState.targetTemp = temp;
         }
       }
-      mqttPublish(TOPIC_SetTargetTemp,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetAdjTemp ) ) {
@@ -409,7 +408,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermState.adjTemp = adjTemp;
         thermSendAdvancedParams();
       }
-      mqttPublish(TOPIC_SetAdjTemp,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetFloorTempMax ) ) {
@@ -423,7 +421,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermState.floorTempMax = ftMax;
         thermSendAdvancedParams();
       }
-      mqttPublish(TOPIC_SetFloorTempMax,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetAntiFroze ) ) {
@@ -433,7 +430,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermState.antiFroze = (bool)(v&1);
         thermSendAdvancedParams();
       }
-      mqttPublish(TOPIC_SetAntiFroze,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetPower ) ) {
@@ -446,7 +442,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         sprintf(s, "01060000%02x%02x", thermState.locked?1:0, v );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetPower,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetLocked ) ) {
@@ -459,7 +454,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         sprintf(s, "01060000%02x%02x", v, thermState.power?1:0 );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetLocked,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetAutoMode ) ) {
@@ -472,7 +466,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetAutoMode,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetSensor ) ) {
@@ -489,7 +482,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetSensor,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetLoopMode ) ) {
@@ -506,19 +498,16 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
         thermSendMessage( s );
       }
-      mqttPublish(TOPIC_SetLoopMode,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetSchedule ) ) {
     if( (payload != NULL) && (length>10) && (length<255) ) {
       thermParseSchedule( (char*)payload, length, thermState.schedule, 6 );
-      mqttPublish(TOPIC_SetSchedule,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetSchedule2 ) ) {
     if( (payload != NULL) && (length>10) && (length<255) ) {
       thermParseSchedule( (char*)payload, length, thermState.schedule2, 2 );
-      mqttPublish(TOPIC_SetSchedule2,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetWeekday ) ) {
@@ -534,7 +523,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
           thermSendMessage( s );
         }
       }
-      mqttPublish(TOPIC_SetWeekday,(char*)NULL, false);
     }
     return true;
   } else if( mqttIsTopic( topic, TOPIC_SetTime ) ) {
@@ -562,7 +550,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
           thermSendMessage( s );
         }
       }
-      mqttPublish(TOPIC_SetTime,(char*)NULL, false);
     }
     return true;
 #ifdef USE_HTU21D
@@ -574,7 +561,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermConfig.autoAdjMode = m;
         storageSave();
       }
-      mqttPublish(TOPIC_SetAutoAdjMode,(char*)NULL, false);
     }
     return true;
 #endif    
