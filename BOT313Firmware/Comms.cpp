@@ -450,6 +450,7 @@ void commsLoop() {
       }
       if( commsPaused == 0 ) {
         bool tryConnect = true;
+        char willTopic[63];
 #ifdef MQTT_MDNS
         if( mqttMdnsCnt<=0 ) {
           mqttMdnsIndex = 0;
@@ -458,16 +459,19 @@ void commsLoop() {
           aePrintln(F("MQTT: Querying MDNS for broker"));
           mqttMdnsCnt = MDNS.queryService("mqtt", "tcp");
           if( mqttMdnsCnt>mqttMdnsSize ) mqttMdnsCnt=mqttMdnsSize;
+          aePrintf("MQTT: %d brokers advertised:\n", mqttMdnsCnt);
           for (int i = 0; i < mqttMdnsCnt; ++i) {
             IPAddress ip = MDNS.IP(i);
             sprintf( mqttMdns[i].address, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+            aePrintf("MQTT: %d: %s:\n", (i+1), mqttMdns[i].address );
             mqttMdns[i].port = MDNS.port(i);
           }
         }
-        aePrintf("MQTT: %d answer(s)received\n", mqttMdnsCnt );
+
 
         if( mqttMdnsCnt>0 ) {
-          aePrintf("MQTT: Connecting broker #%d %s:%d\r\n", mqttMdnsIndex, mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );
+          mqttTopic(willTopic, "*");
+          aePrintf("MQTT: Connecting broker #%d %s:%d as %s\r\n", mqttMdnsIndex, mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port, willTopic );
           mqttClient.setServer( mqttMdns[mqttMdnsIndex].address, mqttMdns[mqttMdnsIndex].port );
           strcpy( mqttServerAddress, mqttMdns[mqttMdnsIndex].address );
           mqttMdnsIndex++;
@@ -479,15 +483,13 @@ void commsLoop() {
           tryConnect = false;
         }
 #else
+        mqttTopic(willTopic, "*");
+        aePrintf("MQTT: Connecting broker %s:%d as %s\r\n", MQTT_Address, MQTT_Port, willTopic);
         mqttClient.setServer( MQTT_Address, MQTT_Port);
         strcpy( mqttServerAddress, MQTT_Address );
 #endif
 
         mqttClient.setCallback( mqttCallbackProxy );
-        
-        char willTopic[63];
-        mqttTopic( willTopic, "" );
-        aePrint(F("MQTT: Connecting as ")); aePrintln(willTopic);
         
         mqttTopic( willTopic, TOPIC_Online );
         if( tryConnect && mqttClient.connect( commsConfig.hostName, willTopic, 0, true, "0" ) ) {
