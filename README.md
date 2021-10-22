@@ -78,6 +78,36 @@
    * **SetTime**, **SetWeekday**: Задание текущего веремени и дня недели. Допустимый формат времени "ЧЧ:ММ" или "ЧЧ:ММ:СС". В случае если в Config.h определена константа 
      TIMEZONE - время будет автоматически синхронизироваться по первому доступному NTP серверу в следующем порядке: "адрес MQTT брокера", "time.google.com" и "time.nist.gov".
 
+* **HAction**: Home Assistant: Композитное состояние термостата. Параметр **action_topic** (см. ниже). 
+  Может принимать значения "off", "idle", "heating"
+* **HAMode**: Home Assistant: Композитный режим работы термостата. Параметр **mode_state_topic**.
+  Допустимые значения "off","heat" (нормальный режим работы) и "auto" (режим работы по расписанию)
+  * **SetHAMode**: Home Assistant: Задание режима работы. Параметр **mode_command_topic**
+
+### Пример описания термостата в файле конфигурации Home Assistant
+
+      climate 'bedroom_thermostat':
+        unique_id: 'bedroom_thermostat'
+        name: 'bedroom_thermostat'
+        platform: mqtt
+        availability:
+          topic: 'Bedroom/Thermostat/Online'
+          payload_available: '1'
+          payload_not_available: '0'
+      
+        temperature_unit: C
+        temp_step: 0.5
+        max_temp: 25
+        min_temp: 15
+        precision: 0.5
+        modes: ["off", "heat","auto"]
+        current_temperature_topic: 'Bedroom/Thermostat/RoomTemp'
+        temperature_state_topic: 'Bedroom/Thermostat/TargetTemp'
+        temperature_command_topic: 'Bedroom/Thermostat/SetTargetTemp'
+        action_topic: 'Bedroom/Thermostat/HAction'
+        mode_state_topic: 'Bedroom/Thermostat/HAMode'
+        mode_command_topic: 'Bedroom/Thermostat/SetHAMode'
+
 
 ### Фотографии
 

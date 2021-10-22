@@ -5,6 +5,13 @@
 *.skb
 Config.AE.h
 Backup.bat
+__vm/
+BOT313Firmware/Release/*
+*.sln
+*.skb
+*.vcxproj
+*.vcxproj.*
+board.txt
 
 # C extensions
 *.so

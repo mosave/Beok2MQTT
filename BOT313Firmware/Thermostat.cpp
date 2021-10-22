@@ -33,6 +33,34 @@ static char* TOPIC_SetSensor PROGMEM = "SetSensor";
 static char* TOPIC_Hysteresis PROGMEM = "Hysteresis";
 static char* TOPIC_SetAdjTemp PROGMEM = "SetAdjTemp";
 
+
+static char* TOPIC_HAction PROGMEM = "HAction";
+static char* TOPIC_SetHAMode PROGMEM = "SetHAMode";
+
+static char* HAMODE_Off PROGMEM = "off"; // 0 
+static char* HAMODE_Heat PROGMEM = "heat"; // 1
+static char* HAMODE_Auto PROGMEM = "auto"; // 2
+
+static char* HACTION_Off PROGMEM = "off"; // 0
+static char* HACTION_Idle PROGMEM = "idle"; // 1
+static char* HACTION_Heating PROGMEM = "heating"; // 2
+
+
+
+char* HAMODE(int haMode) {
+    return
+        (haMode == 2) ? HAMODE_Auto :
+        (haMode == 1) ? HAMODE_Heat :
+        HAMODE_Off;
+}
+char* HACTION(int hAction) {
+    return
+        (hAction == 2) ? HACTION_Heating :
+        (hAction == 1) ? HACTION_Idle :
+        HACTION_Off;
+}
+
+
 #ifdef USE_HTU21D
 static char* TOPIC_SetAutoAdjMode PROGMEM = "SetAutoAdjMode";
 #endif
@@ -47,7 +75,7 @@ static char* TOPIC_SetSchedule2 PROGMEM = "SetSchedule2";
 
 
 #define P3(str) ((char*)(((uint)str)+3))
-#pragma endregion Constants
+#pragma endregion
 
 #pragma region Types and Vars
 enum ThermWiFiState {
@@ -125,6 +153,7 @@ void thermSendMessage( const char* data, bool appendCRC) {
   mqttPublish("Log",s,false);
   aePrintf(s);
 #endif
+  delay(300);
 }
 
 void thermSendMessage( const char* data) {
@@ -371,11 +400,27 @@ void thermConnect() {
   mqttSubscribeTopic( TOPIC_SetAdjTemp );
   mqttSubscribeTopic( TOPIC_SetAntiFroze );
   mqttSubscribeTopic( TOPIC_SetFloorTempMax );
-  
+  mqttSubscribeTopic( TOPIC_SetHAMode );
+
 #ifdef USE_HTU21D
   mqttSubscribeTopic( TOPIC_SetAutoAdjMode );
 #endif
   thermActivityLocked = millis();
+}
+
+void thermSetPower(bool power) {
+    thermActivityLocked = millis();
+    thermState.power = power?1:0;
+    char s[31];
+    sprintf(s, "01060000%02x%02x", thermState.locked, thermState.power );
+    thermSendMessage(s);
+}
+void thermSetAutoMode(bool autoMode) {
+    thermActivityLocked = millis();
+    thermState.autoMode = autoMode?1:0;
+    char s[31];
+    sprintf(s, "01060002%02x%02x", (((thermState.loopMode?1:0) << 4) | thermState.autoMode), thermState.sensor );
+    thermSendMessage(s);
 }
 
 bool thermCallback(char* topic, byte* payload, unsigned int length) {
@@ -435,12 +480,8 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
   } else if( mqttIsTopic( topic, TOPIC_SetPower ) ) {
     if( (payload != NULL) && (length==1) ) {
       char v = ( (char)*payload =='1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
-      if( (v<99) && (thermState.power != (bool)v) ) {
-        thermActivityLocked = millis();
-        thermState.power = (bool)v;
-        char s[31];
-        sprintf(s, "01060000%02x%02x", thermState.locked?1:0, v );
-        thermSendMessage( s );
+      if( (v<99) && (thermState.power != v) ) {
+        thermSetPower( (bool)v );
       }
     }
     return true;
@@ -460,11 +501,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
     if( (payload != NULL) && (length==1) ) {
       uint8 v = ( (char)*payload == '1' ) ? 1 : ( (char)*payload == '0' ) ? 0 : 99;
       if( (v<99) && (thermState.autoMode != (bool)(v&1)) ){
-        thermActivityLocked = millis();
-        thermState.autoMode = (bool)(v&1);
-        char s[31];
-        sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
-        thermSendMessage( s );
+          thermSetAutoMode((bool)(v & 1));
       }
     }
     return true;
@@ -479,7 +516,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermActivityLocked = millis();
         thermState.sensor = (v&0x0F);
         char s[31];
-        sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
+        sprintf(s, "01060002%02x%02x", (((thermState.loopMode?1:0) << 4) | (thermState.autoMode?1:0)), thermState.sensor );
         thermSendMessage( s );
       }
     }
@@ -495,7 +532,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
         thermActivityLocked = millis();
         thermState.loopMode = (v&0x0F);
         char s[31];
-        sprintf(s, "01060002%02x%02x", ((thermState.loopMode << 4) | thermState.autoMode), thermState.sensor );
+        sprintf(s, "01060002%02x%02x", (((thermState.loopMode?1:0) << 4) | (thermState.autoMode?1:0)), thermState.sensor );
         thermSendMessage( s );
       }
     }
@@ -552,6 +589,23 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
       }
     }
     return true;
+  } else if (mqttIsTopic(topic, TOPIC_SetHAMode)) {
+      if ((payload != NULL) && (length > 0) && (length <= 15)) {
+          char s[16];
+          memset(s, 0, sizeof(s));
+          memcpy(s, payload, length);
+          if ( strcmp(s, HAMODE(0) ) == 0 ) { // Off
+              thermSetPower( false );
+              thermSetAutoMode(false);
+          } else if (strcmp(s, HAMODE(1)) == 0) { // Heat
+              thermSetPower(true);
+              thermSetAutoMode(false);
+          } else if (strcmp(s, HAMODE(2)) == 0) { // Auto
+              thermSetPower(true);
+              thermSetAutoMode(true);
+          }
+      }
+      return true;
 #ifdef USE_HTU21D
   } else if( mqttIsTopic( topic, TOPIC_SetAutoAdjMode ) ) {
     if( (payload != NULL) && (length==1) && (thermState.sensor == 0) ) {
@@ -567,7 +621,6 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
   } else if( mqttIsTopic( topic, "EnableOTA" ) ) {
     thermSetWiFiSign( ThermWiFiState::BlinkFast );
     thermDisabled = true;
-    delay(100);
     commsEnableOTA();
     return true;
   }
@@ -661,6 +714,28 @@ void thermPublish() {
         thermLastPublished = millis();
       }
     }
+
+    static int _haMode = -1;
+    static int _hAction = -1;
+    int haMode, hAction;
+    if (!thermState.power) {
+        haMode = 0; // off
+        hAction = 0; // off
+    } else {
+        // Auto / Heat
+        haMode = thermState.autoMode ? 2 : 1;
+        
+        // Heat / Idle
+        hAction = thermState.heating ? 2 : 1;
+    }
+    if( (_haMode != haMode) && mqttPublish(P3(TOPIC_SetHAMode), HAMODE(haMode),true) ) {
+        _haMode = haMode;
+    }
+    if ((_hAction != hAction) && mqttPublish(TOPIC_HAction, HACTION(hAction), true)) {
+        _hAction = hAction;
+    }
+
+
 
 #ifdef USE_HTU21D
     static int _autoAdjMode = 99;
