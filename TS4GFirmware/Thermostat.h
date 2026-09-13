@@ -1,6 +1,8 @@
 #ifndef thermostat_h
 #define thermostat_h
 
+#define UNKNOWN ((char)128)
+
 struct ThermConfig {
     int autoAdjMode = 0;
     // Компенсация нагрева корпуса термостата в выключенном и во включенном состоянии
@@ -10,48 +12,31 @@ struct ThermConfig {
 
 extern ThermConfig thermConfig;
 
-struct ThermScheduleRecord {
-    int8 h;
-    int8 m;
-    float t;
-};
-
 struct ThermState {
+    char brightness;
+    bool inverted;
     bool locked;
     bool power;
     bool heating;
-    bool targetSetManually;
+    bool sound;
 
     float roomTemp;
     float targetTemp;
     float targetTempMax;
-    float targetTempMin;
 
     float floorTemp;
-    int floorTempMax;
+    float floorTempMax;
 
-    bool autoMode;
-    int loopMode;
-    int sensor;
+    char sensor;
     float hysteresis;
     float adjTemp;
-
     bool antiFroze;
-    bool powerOnMemory;
-
-    int hours;
-    int minutes;
-    int seconds;
-    int weekday;
-
-    ThermScheduleRecord schedule[6];
-    ThermScheduleRecord schedule2[2];
 };
 
 extern ThermState thermState;
 
 //MCU_DEBUG only!!!
-void thermSendMessage( const char* data);
+void thermSendMessage( const char* data, bool blockActivityDetection );
 
 void thermInit();
 #endif

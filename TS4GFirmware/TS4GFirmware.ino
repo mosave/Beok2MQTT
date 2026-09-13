@@ -9,7 +9,7 @@
 #include "Comms.h"
 #include "Thermostat.h"
 
-#ifdef USE_HTU
+#ifdef USE_HTU21D
   #include <Wire.h>
   #include "TAH.h"
 #endif
@@ -34,7 +34,7 @@ bool mqttCallback(char* topic, byte* payload, unsigned int length) {
       char b[255];
       memset( b, 0, sizeof(b) );
       strncpy( b, ((char*)payload), length );
-      thermSendMessage( b );
+      thermSendMessage( b, true );
     }
     return true;
   }
@@ -54,14 +54,14 @@ void setup() {
 
   aeInit();
   commsInit();
-#ifdef USE_HTU
+#ifdef USE_HTU21D
   Wire.begin(SDA_Pin, SCL_Pin);
   tahInit();
 #endif
   mqttRegisterCallbacks( mqttCallback, mqttConnect );
 
   thermInit();
-//  commsEnableOTA();
+  //commsEnableOTA();
 }
 
 void loop() {
