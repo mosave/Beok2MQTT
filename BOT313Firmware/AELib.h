@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include "Config.h"
 
-#define AELIB_VERSION "2.0.5"
+#define AELIB_VERSION "2.1.1"
 
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 

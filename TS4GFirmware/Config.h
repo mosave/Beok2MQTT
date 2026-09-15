@@ -2,7 +2,7 @@
 #define config_h
 #include <Arduino.h>
 
-#define VERSION "BEOK2MQTT/Tuya v1.04"
+#define VERSION "BEOK2MQTT/Tuya v1.05"
 #ifdef MQTT_MAX_PACKET_SIZE
     #undef MQTT_MAX_PACKET_SIZE
 #endif

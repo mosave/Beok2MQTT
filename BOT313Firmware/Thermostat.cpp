@@ -413,16 +413,18 @@ void thermPublish(char* topic, int value, int* _value, bool retained, bool activ
 	}
 }
 
-void thermPublish(bool force) {
+// force: 0 - normal publishing; 1 - ignore the 500 ms publishing timeout;
+//        2 - reset the published-state cache and publish every thermostat parameter.
+void thermPublish(int force = 0) {
 	static ThermState _thermState;
 	static unsigned long _t = 0;
 	unsigned long t = millis();
-	if (force) {
+	if (force == 2) {
 		memset(&_thermState, 0xAF, sizeof(_thermState));
 		_t = 0;
 	}
 	// To avoid MQTT spam
-	if ((thermLastStatus == 0) || !timedOut(t, _t, 500)) {
+	if ((thermLastStatus == 0) || ((force == 0) && !timedOut(t, _t, 500))) {
 		return;
 	}
 	_t = t;
@@ -537,7 +539,7 @@ void thermConnect() {
 	mqttSubscribeTopic(TOPIC_SetSensorAdjTempOff);
 #endif
 	thermActivityLocked = millis();
-	thermPublish(true);
+	thermPublish(2);
 }
 
 void thermSetPower(bool power) {
@@ -580,6 +582,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 				thermState.targetTemp = temp;
 			}
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -591,6 +594,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 				thermSendAdvancedParams();
 			}
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -600,6 +604,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			thermState.floorTempMax = ftMax;
 			thermSendAdvancedParams();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -608,6 +613,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			thermState.antiFroze = b;
 			thermSendAdvancedParams();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -616,6 +622,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			thermState.powerOnMemory = b;
 			thermSendAdvancedParams();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -623,6 +630,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 		if (parseBool(s, &b) && (b != thermState.power)) {
 			thermSetPower(b);
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -633,6 +641,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			sprintf(s, "01060000%02x%02x", thermState.locked ? 1 : 0, thermState.power ? 1 : 0);
 			thermSendMessage(s);
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -645,6 +654,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			sprintf(s, "01060002%02x%02x", (((thermState.loopMode ? 1 : 0) << 4) | (thermState.autoMode ? 1 : 0)), thermState.sensor);
 			thermSendMessage(s);
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -653,6 +663,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 		if (parseBool(s, &b) && (b != thermState.autoMode)) {
 			thermSetAutoMode(b);
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -665,6 +676,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			sprintf(s, "01060002%02x%02x", (((thermState.loopMode ? 1 : 0) << 4) | (thermState.autoMode ? 1 : 0)), thermState.sensor);
 			thermSendMessage(s);
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -672,6 +684,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 		if ((length > 10) && (length < 255)) {
 			thermParseSchedule((char*)payload, length, thermState.schedule, 6);
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -679,6 +692,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 		if ((length > 10) && (length < 255)) {
 			thermParseSchedule((char*)payload, length, thermState.schedule2, 2);
 		}
+		thermPublish(1);
 		return true;
 	}
 #endif
@@ -699,6 +713,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 				thermSetAutoMode(true);
 			}
 		}
+		thermPublish(1);
 		return true;
 	}
 #ifdef USE_HTU
@@ -708,6 +723,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			thermConfig.autoAdjMode = autoAdjMode;
 			storageSave();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -717,6 +733,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			if (thermState.power) tahTemperatureAdj = f;
 			storageSave();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -726,6 +743,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			if (!thermState.power) tahTemperatureAdj = f;
 			storageSave();
 		}
+		thermPublish(1);
 		return true;
 	}
 #endif    
@@ -856,7 +874,7 @@ void thermLoop() {
 		_wifiState = (char)wifiState;
 	}
 
-	thermPublish(false);
+	thermPublish(0);
 }
 
 void thermInit() {

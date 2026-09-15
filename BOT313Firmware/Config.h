@@ -6,7 +6,7 @@
 //#define TAH_HTU21D
 #define TAH_SCD4x
 
-#define VERSION_PREFIX "BEOK2MQTT v1.08"
+#define VERSION_PREFIX "BEOK2MQTT v1.09"
 #ifdef TAH_HTU21D
 #define VERSION VERSION_PREFIX " [HTU21]"
 #define USE_HTU

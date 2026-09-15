@@ -466,17 +466,19 @@ void thermPublish(char* topic, char value, char* _value, bool retained, bool act
 	if (activity) thermTriggerActivity();
 }
 
-void thermPublish(bool force) {
+// force: 0 - normal publishing; 1 - ignore the 500 ms publishing timeout;
+//        2 - reset the published-state cache and publish every thermostat parameter.
+void thermPublish(int force = 0) {
 	static unsigned long _t = 0;
 	static ThermState _thermState;
 	unsigned long t = millis();
-	if (force) {
+	if (force == 2) {
 		thermInvalidate(&_thermState);
 		_t = 0;
 	}
 	if (!thermStateIsValid()) return;
 
-	if (!timedOut(t, _t, 500)) {
+	if ((force == 0) && !timedOut(t, _t, 500)) {
 		return;
 	}
 	_t = t;
@@ -560,7 +562,7 @@ void thermConnect() {
 	mqttSubscribeTopic(TOPIC_SetSensorAdjTempOn);
 	mqttSubscribeTopic(TOPIC_SetSensorAdjTempOff);
 #endif
-	thermPublish(true);
+	thermPublish(2);
 }
 
 
@@ -578,62 +580,73 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 
 	if (mqttIsTopic(topic, TOPIC_SetBrightness)) {
 		if (parseInt(s, 0, 3, &i)) thermSetBrightness(i);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetInverted)) {
 		if (parseBool(s, &b)) thermSetInverted(b);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetLocked)) {
 		if (parseBool(s, &b)) thermSetLock(b);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetPower)) {
 		if (parseBool(s, &b)) thermSetPower(b);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetSound)) {
 		if (parseBool(s, &b)) thermSetSound(b);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetTargetTemp)) {
 		if (parseFloat(s, 5, thermState.targetTempMax, &f)) thermSetTargetTemp(f);
-		return true;
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetTargetTempMax)) {
 		if (parseFloat(s, 20, 35, &f)) thermSetTargetTempMax(f);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetFloorTempMax)) {
 		if (parseFloat(s, 20, 45, &f)) thermSetFloorTempMax(f);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetSensor)) {
 		if (parseInt(s, 0, 2, &i)) thermSetSensor(i);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetHysteresis)) {
 		if (parseFloat(s, 0, 5, &f)) thermSetHysteresis(f);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetAdjTemp)) {
 		if (parseFloat(s, -10, 10, &f)) thermSetAdjTemp(f);
+		thermPublish(1);
 		return true;
 	}
 
 	if (mqttIsTopic(topic, TOPIC_SetAntiFroze)) {
 		if (parseBool(s, &b)) thermSetAntiFroze(b);
+		thermPublish(1);
 		return true;
 	}
 
@@ -646,6 +659,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 				thermSetPower(true);
 			}
 		}
+		thermPublish(1);
 		return true;
 	}
 #ifdef USE_TAH
@@ -655,6 +669,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			thermConfig.autoAdjMode = autoAdjMode;
 			storageSave();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -664,6 +679,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			if (thermState.power) tahTemperatureAdj = f;
 			storageSave();
 		}
+		thermPublish(1);
 		return true;
 	}
 
@@ -673,6 +689,7 @@ bool thermCallback(char* topic, byte* payload, unsigned int length) {
 			if (!thermState.power) tahTemperatureAdj = f;
 			storageSave();
 		}
+		thermPublish(1);
 		return true;
 	}
 #endif    
@@ -804,7 +821,7 @@ void thermLoop() {
 		ThermWiFiState::On
 	);
 
-	thermPublish(false);
+	thermPublish(0);
 }
 
 void thermInit() {
